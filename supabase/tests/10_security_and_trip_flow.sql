@@ -390,4 +390,109 @@ do $$ begin
 end $$;
 reset role;
 
+
+\echo '▶ save_route is atomic, reorders stops, and is admin-only'
+select tests.login(:owner_a); set role authenticated;
+do $$ declare v uuid; s1 uuid := gen_random_uuid(); s2 uuid := gen_random_uuid(); begin
+  v := public.save_route('a0000000-0000-4000-8000-000000000001', null,
+    '{"name":"الياسمين — صباحي","period":"morning","weekdays":[0,1,2,3,4],"departure_time":"06:20","bus_id":"a2000000-0000-4000-8000-000000000002"}',
+    jsonb_build_array(jsonb_build_object('id', s1, 'name', 'أ', 'lat', 24.82, 'lng', 46.64, 'offset_min', 5),
+                      jsonb_build_object('id', s2, 'name', 'ب', 'lat', 24.83, 'lng', 46.65, 'offset_min', 9)),
+    jsonb_build_array(jsonb_build_object('student_id', 'a4000000-0000-4000-8000-000000000006', 'stop_id', s2)));
+  -- swap order in a single save (deferred unique on seq)
+  perform public.save_route('a0000000-0000-4000-8000-000000000001', v,
+    '{"name":"الياسمين — صباحي","period":"morning","weekdays":[0,1,2,3,4],"departure_time":"06:20"}',
+    jsonb_build_array(jsonb_build_object('id', s2, 'name', 'ب', 'lat', 24.83, 'lng', 46.65),
+                      jsonb_build_object('id', s1, 'name', 'أ', 'lat', 24.82, 'lng', 46.64)),
+    '[]');
+  assert (select seq from public.route_stops where id = s2) = 1;
+  assert (select count(*) from public.route_students where route_id = v) = 0;
+end $$;
+-- invalid student from another school rolls back the whole save
+select tests.expect_error($q$select public.save_route('a0000000-0000-4000-8000-000000000001', null,
+  '{"name":"x","period":"morning","weekdays":[0],"departure_time":"06:00"}', '[]',
+  '[{"student_id":"b4000000-0000-4000-8000-000000000001"}]')$q$, '23503');
+do $$ begin assert not exists (select 1 from public.routes where name = 'x'); end $$;
+reset role;
+select tests.login(:viewer_a); set role authenticated;
+select tests.expect_error($q$select public.save_route('a0000000-0000-4000-8000-000000000001', null,
+  '{"name":"y","period":"morning","weekdays":[0],"departure_time":"06:00"}', '[]', '[]')$q$, 'forbidden');
+reset role;
+
+\echo '▶ admin replies to a parent request; parent is notified'
+select tests.login(:owner_a); set role authenticated;
+do $$ declare r public.parent_requests; begin
+  select * into r from public.parent_requests limit 1;
+  r := public.respond_parent_request(r.id, 'resolved', 'تم تحديث نقطة الصعود اعتبارًا من الغد');
+  assert r.status = 'resolved' and r.handled_by = auth.uid();
+end $$;
+reset role;
+select tests.login(:parent1); set role authenticated;
+do $$ begin assert exists (select 1 from public.notifications where type = 'request_reply'); end $$;
+reset role;
+select tests.login(:owner_b); set role authenticated;
+select tests.expect_error(format('select public.respond_parent_request(%L, ''rejected'', ''x'')',
+  (select id from public.parent_requests limit 1)), 'not_found');
+reset role;
+
+
+\echo '▶ Excel import validates everything before writing'
+select tests.login(:owner_a); set role authenticated;
+do $$ declare r jsonb; begin
+  r := public.import_students('a0000000-0000-4000-8000-000000000001', '[
+    {"student_number":"25001","full_name":"نواف سعد العتيبي","grade":"الأول الابتدائي","guardian_name":"سعد العتيبي","guardian_phone":"0561234000","bus_code":"باص 2"},
+    {"student_number":"25002","full_name":"","guardian_phone":"123"},
+    {"student_number":"25003","full_name":"تالا","bus_code":"باص 99"}]');
+  assert not (r ->> 'ok')::boolean and jsonb_array_length(r -> 'errors') = 3, r::text;
+  assert not exists (select 1 from public.students where student_number = '25001'), 'nothing written on error';
+  r := public.import_students('a0000000-0000-4000-8000-000000000001', '[
+    {"student_number":"25001","full_name":"نواف سعد العتيبي","grade":"الأول الابتدائي","guardian_name":"سعد العتيبي","guardian_phone":"0561234000","bus_code":"باص 2"},
+    {"student_number":"24001","full_name":"محمد عبدالله الحربي","guardian_phone":"0551234567"}]');
+  assert (r ->> 'created')::int = 1 and (r ->> 'updated')::int = 1 and (r ->> 'guardians_created')::int = 1, r::text;
+  assert (select count(*) from public.student_guardians where student_id = 'a4000000-0000-4000-8000-000000000001') = 1, 'existing link reused';
+end $$;
+reset role;
+
+
+\echo '▶ reports run for members only'
+select tests.login(:owner_a); set role authenticated;
+do $$ declare k text; r jsonb; begin
+  foreach k in array array['attendance','trips','delays','drivers','buses','absences','incidents','punctuality'] loop
+    r := public.school_report('a0000000-0000-4000-8000-000000000001', k, current_date - 7, current_date + 1);
+    assert jsonb_typeof(r) = 'array', k;
+  end loop;
+  r := public.school_report('a0000000-0000-4000-8000-000000000001', 'attendance', current_date - 7, current_date + 1);
+  assert jsonb_array_length(r) = 5, 'attendance rows for completed trip: ' || r::text;
+  r := public.school_report('a0000000-0000-4000-8000-000000000001', 'incidents', current_date - 7, current_date + 1);
+  assert jsonb_array_length(r) = 1, r::text;
+end $$;
+reset role;
+select tests.login(:parent1); set role authenticated;
+select tests.expect_error($q$select public.school_report('a0000000-0000-4000-8000-000000000001', 'trips', current_date, current_date)$q$, 'forbidden');
+reset role;
+
+
+\echo '▶ team management is owner-only'
+select tests.login(:viewer_a); set role authenticated;
+select tests.expect_error($q$select public.add_school_member('a0000000-0000-4000-8000-000000000001', 'parent1@alrowad.sa', 'admin')$q$, 'forbidden');
+do $$ begin assert (select count(*) from public.list_school_members('a0000000-0000-4000-8000-000000000001')) = 2; end $$;
+reset role;
+select tests.login(:owner_a); set role authenticated;
+do $$ begin
+  perform public.add_school_member('a0000000-0000-4000-8000-000000000001', 'PARENT2@alrowad.sa', 'viewer');
+  assert (select count(*) from public.list_school_members('a0000000-0000-4000-8000-000000000001')) = 3;
+end $$;
+select tests.expect_error($q$select public.add_school_member('a0000000-0000-4000-8000-000000000001', 'nobody@x.sa', 'admin')$q$, 'user_not_found');
+reset role;
+
+
+\echo '▶ scheduled generation is idempotent and not callable by clients'
+do $$ begin
+  assert private.generate_trips_all_schools() >= 0;
+  assert private.generate_trips_all_schools() = 0, 'second run creates nothing';
+end $$;
+select tests.login(:owner_a); set role authenticated;
+select tests.expect_error('select private.generate_trips_all_schools()', '42501');
+reset role;
+
 \echo '✔ all Busna database tests passed'

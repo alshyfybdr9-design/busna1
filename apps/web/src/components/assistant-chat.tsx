@@ -6,12 +6,13 @@ import { cn } from "./ui/cn";
 export interface ChatMessage { role: "user" | "assistant"; content: string }
 
 /** Generic Arabic chat UI for the Busna assistants (parent & school). */
-export function AssistantChat({ endpoint, context, suggestions, intro, className }: {
+export function AssistantChat({ endpoint, context, suggestions, intro, className, onReply }: {
   endpoint: string;
   context?: Record<string, string | null | undefined>;
   suggestions: string[];
   intro: string;
   className?: string;
+  onReply?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -35,6 +36,7 @@ export function AssistantChat({ endpoint, context, suggestions, intro, className
       });
       const body = await res.json().catch(() => ({}));
       setMessages([...next, { role: "assistant", content: res.ok ? body.reply : body.error || "تعذّر الحصول على رد، حاول مرة أخرى." }]);
+      onReply?.();
     } catch {
       setMessages([...next, { role: "assistant", content: "لا يوجد اتصال بالإنترنت حاليًا." }]);
     } finally {

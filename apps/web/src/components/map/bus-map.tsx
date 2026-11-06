@@ -53,12 +53,14 @@ function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);
 }
 
-export function BusMap({ buses = [], points = [], path, selectedId, onSelect, className, fitKey, center }: {
+export function BusMap({ buses = [], points = [], path, selectedId, onSelect, onMapClick, className, fitKey, center }: {
   buses?: MapBus[];
   points?: MapPoint[];
   path?: [number, number][];        // [lng, lat][]
   selectedId?: string | null;
   onSelect?: (id: string) => void;
+  /** Click on empty map (e.g. to place a stop). */
+  onMapClick?: (lat: number, lng: number) => void;
   className?: string;
   /** Change this value to re-fit the map to its content. */
   fitKey?: string;
@@ -72,6 +74,8 @@ export function BusMap({ buses = [], points = [], path, selectedId, onSelect, cl
   const [failed, setFailed] = useState(false);
   const onSelectRef = useRef(onSelect);
   onSelectRef.current = onSelect;
+  const onClickRef = useRef(onMapClick);
+  onClickRef.current = onMapClick;
 
   // init
   useEffect(() => {
@@ -94,6 +98,7 @@ export function BusMap({ buses = [], points = [], path, selectedId, onSelect, cl
           m.addLayer({ id: "path", type: "line", source: "path", paint: { "line-color": "#0E9F6E", "line-width": 4 }, layout: { "line-cap": "round", "line-join": "round" } });
           setReady(true);
         });
+        m.on("click", (e) => onClickRef.current?.(e.lngLat.lat, e.lngLat.lng));
         m.on("error", (e) => { if (!m.loaded() && (e as { error?: { status?: number } }).error) setFailed(true); });
         map.current = m;
       } catch {
