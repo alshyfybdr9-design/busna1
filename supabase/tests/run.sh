@@ -26,4 +26,12 @@ done
 echo "• seeding"
 "${PSQL[@]}" -f seed.sql >/dev/null
 echo "• running tests"
-"${PSQL[@]}" -f tests/10_security_and_trip_flow.sql
+# Numbered test files run in order against the same database; later files
+# start from the state earlier ones leave behind.
+for f in tests/[1-9]*.sql; do
+  echo "• $f"
+  if ! out=$("${PSQL[@]}" -f "$f" 2>&1); then
+    echo "$out"; echo "✘ $f failed"; exit 1
+  fi
+  grep -E '^(▶|✔)' <<<"$out" || true
+done

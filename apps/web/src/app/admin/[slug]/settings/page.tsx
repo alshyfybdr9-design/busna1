@@ -5,6 +5,7 @@ import { UserPlus } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { must, useQuery } from "@/lib/use-query";
 import { toAppError } from "@/lib/errors";
+import { trackingConfigFrom } from "@/lib/gps-policy";
 import { fmtDate } from "@/lib/format";
 import type { MemberRole } from "@/lib/types";
 import { useSchool } from "@/components/admin/school-context";
@@ -28,6 +29,9 @@ export default function SettingsPage() {
     city: school.city ?? "", address: school.address ?? "", lat: school.lat, lng: school.lng,
     approach_radius_m: school.settings?.approach_radius_m ?? 700, late_threshold_min: school.settings?.late_threshold_min ?? 10,
     school_start_time: (school.settings as { school_start_time?: string })?.school_start_time ?? "07:00",
+    ...(({ gps_interval_s, gps_stale_after_s, gps_offline_after_s }) => ({ gps_interval_s, gps_stale_after_s, gps_offline_after_s }))(trackingConfigFrom(school.settings)),
+    gps_retention_days: school.settings?.gps_retention_days ?? 90,
+    document_warning_days: school.settings?.document_warning_days ?? 30,
   });
   const [busy, setBusy] = useState(false);
   const set = <K extends keyof typeof f>(k: K, v: (typeof f)[K]) => setF((x) => ({ ...x, [k]: v }));
@@ -35,11 +39,21 @@ export default function SettingsPage() {
   async function save() {
     if (f.name.trim().length < 2) return toast.error("اسم المدرسة مطلوب");
     if (!/^#[0-9a-f]{6}$/i.test(f.primary_color)) return toast.error("اللون يجب أن يكون بصيغة #RRGGBB");
+    const inRange = (v: number, lo: number, hi: number) => Number.isInteger(v) && v >= lo && v <= hi;
+    if (!inRange(f.gps_interval_s, 5, 120)) return toast.error("فترة إرسال الموقع يجب أن تكون بين 5 و120 ثانية");
+    if (!inRange(f.gps_stale_after_s, 20, 900) || f.gps_stale_after_s <= f.gps_interval_s)
+      return toast.error("مدة اعتبار الموقع متأخرًا يجب أن تكون بين 20 و900 ثانية وأكبر من فترة الإرسال");
+    if (!inRange(f.gps_offline_after_s, 60, 3600) || f.gps_offline_after_s <= f.gps_stale_after_s)
+      return toast.error("مدة اعتبار الموقع منقطعًا يجب أن تكون بين 60 و3600 ثانية وأكبر من مدة التأخر");
+    if (!inRange(f.gps_retention_days, 7, 730)) return toast.error("مدة الاحتفاظ بسجل المسار يجب أن تكون بين 7 و730 يومًا");
+    if (!inRange(f.document_warning_days, 1, 180)) return toast.error("مدة التنبيه قبل انتهاء الوثائق يجب أن تكون بين 1 و180 يومًا");
     setBusy(true);
     const { error } = await sb.from("schools").update({
       name: f.name.trim(), name_en: f.name_en || null, logo_url: f.logo_url || null, primary_color: f.primary_color,
       city: f.city || null, address: f.address || null, lat: f.lat, lng: f.lng,
-      settings: { ...school.settings, approach_radius_m: Number(f.approach_radius_m), late_threshold_min: Number(f.late_threshold_min), school_start_time: f.school_start_time },
+      settings: { ...school.settings, approach_radius_m: Number(f.approach_radius_m), late_threshold_min: Number(f.late_threshold_min), school_start_time: f.school_start_time,
+        gps_interval_s: f.gps_interval_s, gps_stale_after_s: f.gps_stale_after_s, gps_offline_after_s: f.gps_offline_after_s,
+        gps_retention_days: f.gps_retention_days, document_warning_days: f.document_warning_days },
     }).eq("id", school.id);
     setBusy(false);
     if (error) return toast.error(toAppError(error).message);
@@ -83,6 +97,27 @@ export default function SettingsPage() {
               </Field>
               <Field label="بداية الدوام" hint="لتقرير الالتزام بالوصول">
                 <Input type="time" value={f.school_start_time} onChange={(e) => set("school_start_time", e.target.value)} />
+              </Field>
+            </div>
+          </section>
+
+          <section className="space-y-4 rounded-2xl border border-line bg-white p-5 shadow-card">
+            <h2 className="font-semibold">التتبع والامتثال</h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="فترة إرسال الموقع أثناء الحركة (ث)" hint="أثناء التوقف يُرسل الموقع كل 30 ثانية للتأكد من اتصال الجهاز">
+                <Input type="number" min={5} max={120} value={f.gps_interval_s} onChange={(e) => set("gps_interval_s", Number(e.target.value))} />
+              </Field>
+              <Field label="اعتبار الموقع متأخرًا بعد (ث)">
+                <Input type="number" min={20} max={900} value={f.gps_stale_after_s} onChange={(e) => set("gps_stale_after_s", Number(e.target.value))} />
+              </Field>
+              <Field label="اعتبار الموقع منقطعًا بعد (ث)">
+                <Input type="number" min={60} max={3600} value={f.gps_offline_after_s} onChange={(e) => set("gps_offline_after_s", Number(e.target.value))} />
+              </Field>
+              <Field label="الاحتفاظ بسجل المسار (يوم)" hint="بعدها يُحذف المسار التفصيلي ويُحفظ ملخص الرحلة فقط">
+                <Input type="number" min={7} max={730} value={f.gps_retention_days} onChange={(e) => set("gps_retention_days", Number(e.target.value))} />
+              </Field>
+              <Field label="التنبيه قبل انتهاء الوثائق (يوم)" hint="الاستمارة والتأمين والفحص ورخص السائقين">
+                <Input type="number" min={1} max={180} value={f.document_warning_days} onChange={(e) => set("document_warning_days", Number(e.target.value))} />
               </Field>
             </div>
           </section>

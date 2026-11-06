@@ -100,3 +100,25 @@ export function tripTone(status: TripStatus, delayed = false, emergency = false)
 export function attendanceTone(s: AttendanceStatus): Tone {
   return s === "boarded" ? "brand" : s === "dropped" ? "blue" : s === "absent" ? "red" : "neutral";
 }
+
+export const gpsStateLabel: Record<"none" | "live" | "stale" | "offline", string> = {
+  none: "لا توجد إشارة",
+  live: "مباشر",
+  stale: "متأخر",
+  offline: "منقطع",
+};
+export const gpsStateTone = { none: "gray", live: "brand", stale: "amber", offline: "red" } as const;
+
+export const complianceKindLabel: Record<"registration" | "insurance" | "inspection" | "driver_license", string> = {
+  registration: "استمارة المركبة",
+  insurance: "تأمين المركبة",
+  inspection: "الفحص الدوري",
+  driver_license: "رخصة القيادة",
+};
+
+/** "تنتهي خلال 10 أيام" / "منتهية منذ 3 أيام". */
+export function fmtExpiry(daysLeft: number): string {
+  if (daysLeft < 0) { const d = -daysLeft; return d === 1 ? "منتهية منذ يوم" : `منتهية منذ ${d} يومًا`; }
+  if (daysLeft === 0) return "تنتهي اليوم";
+  return daysLeft === 1 ? "تنتهي غدًا" : `تنتهي خلال ${daysLeft} يومًا`;
+}

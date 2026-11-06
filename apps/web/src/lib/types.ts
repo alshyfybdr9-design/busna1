@@ -23,7 +23,12 @@ export interface School {
   address: string | null;
   lat: number | null;
   lng: number | null;
-  settings: { approach_radius_m?: number; late_threshold_min?: number };
+  settings: {
+    approach_radius_m?: number; late_threshold_min?: number;
+    // Fleet operations (clamped server-side by private.tracking_config)
+    gps_interval_s?: number; gps_heartbeat_s?: number; gps_stale_after_s?: number; gps_offline_after_s?: number;
+    gps_retention_days?: number; document_warning_days?: number;
+  };
 }
 
 export interface Staff {
@@ -68,6 +73,9 @@ export interface Bus {
   gps_source: "driver_app" | "device";
   gps_device_id: string | null;
   notes: string | null;
+  registration_expiry: string | null;
+  insurance_expiry: string | null;
+  inspection_expiry: string | null;
 }
 
 export interface Student {
@@ -324,4 +332,59 @@ export interface ParentTracking {
   delay_minutes?: number;
   delay_reason?: string | null;
   path?: [number, number][];
+}
+
+// ---------------------------------------------------------------------
+// Fleet operations (supabase/migrations/20261107000100_fleet_ops.sql)
+// ---------------------------------------------------------------------
+export type GpsFreshness = "none" | "live" | "stale" | "offline";
+
+export interface FleetLiveTrip {
+  trip_id: string;
+  name: string;
+  period: TripPeriod;
+  status: TripStatus;
+  started_at: string | null;
+  arrived_at: string | null;
+  driver_name: string | null;
+  supervisor_name: string | null;
+  delay_minutes: number;
+  emergency_active: boolean;
+  expected: number;
+  on_board: number;
+  dropped: number;
+  absent: number;
+  stops_total: number;
+  stops_done: number;
+  gps_state: GpsFreshness;
+  gps_age_s: number | null;
+  position: { lat: number; lng: number; heading: number | null; speed: number | null; recorded_at: string } | null;
+  next_stop: {
+    name: string; seq: number; planned_at: string | null; distance_m: number | null;
+    eta_minutes: number | null; behind_schedule_min: number | null;
+  } | null;
+  late_threshold_min: number;
+}
+
+export interface FleetLiveBus {
+  bus_id: string;
+  code: string;
+  plate_number: string;
+  status: BusStatus;
+  capacity: number;
+  gps_source: "driver_app" | "device";
+  trip: FleetLiveTrip | null;
+}
+
+export type ComplianceKind = "registration" | "insurance" | "inspection" | "driver_license";
+
+export interface ComplianceItem {
+  school_id: string;
+  entity_type: "bus" | "staff";
+  entity_id: string;
+  label: string;
+  kind: ComplianceKind;
+  expires_on: string;
+  days_left: number;
+  state: "expired" | "expiring" | "valid";
 }

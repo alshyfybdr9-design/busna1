@@ -12,8 +12,12 @@ Next.js · Supabase (Auth, PostgreSQL, RLS, Realtime) · MapLibre
 
 ## البدء
 راجع [docs/PLAN.md](docs/PLAN.md) للبنية وقرارات التصميم وخطة المراحل.
+نتيجة الفحص وخطة التنفيذ التفصيلية: [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md).
 
 ```bash
 # اختبارات قاعدة البيانات (عزل المدارس، الصلاحيات، تدفق الرحلة)
 PGHOST=/tmp PGPORT=5432 PGUSER=postgres supabase/tests/run.sh
+
+# اختبارات الواجهة (قواعد GPS)
+pnpm test:web
 ```

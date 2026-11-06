@@ -2,11 +2,17 @@
 // Driver-device GPS publisher.
 // - Shares location ONLY while a trip is active: the server rejects points for
 //   inactive trips with `trip_not_active`, and the tracker stops itself.
-// - Battery/data: sends a point only after meaningful movement or time.
+// - Cadence (see gps-policy.ts): every gps_interval_s (default 10s) while
+//   moving, every gps_heartbeat_s (default 30s) while parked. If the OS stops
+//   delivering fixes, a heartbeat asks for a fresh one so the dashboard can
+//   tell "parked" (live) from "device silent" (stale/offline).
+// - Background: a PWA tracks only while the page is open (Wake Lock keeps the
+//   screen on). Reliable lock-screen tracking needs a native wrapper.
 // - Offline: points are queued in localStorage and flushed in batches when the
 //   connection returns (server keeps the original GPS timestamps).
 import { supabaseBrowser } from "./supabase/client";
 import { isNetworkError, toAppError } from "./errors";
+import { DEFAULT_TRACKING, publishDecision, type Fix, type TrackingConfig } from "./gps-policy";
 
 export interface TrackerState {
   tripId: string | null;
@@ -22,20 +28,12 @@ export interface TrackerState {
 
 interface Point { lat: number; lng: number; heading: number | null; speed: number | null; accuracy: number | null; t: string }
 
-const MIN_DISTANCE_M = 25;
-const MAX_INTERVAL_MS = 20_000;
-const FLUSH_EVERY_MS = 8_000;
 const MAX_QUEUE = 2_000;
 const MAX_BATCH = 200;
 const ACTIVE_KEY = "busna:tracking:trip";
 const qKey = (trip: string) => `busna:locq:${trip}`;
 
-function distance(a: Point, b: Point) {
-  const R = 6371000, toRad = Math.PI / 180;
-  const dLat = (b.lat - a.lat) * toRad, dLng = (b.lng - a.lng) * toRad;
-  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * toRad) * Math.cos(b.lat * toRad) * Math.sin(dLng / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
-}
+const toFix = (p: Point): Fix => ({ lat: p.lat, lng: p.lng, speed: p.speed, accuracy: p.accuracy, t: Date.parse(p.t) });
 
 function readQueue(trip: string): Point[] {
   try { return JSON.parse(localStorage.getItem(qKey(trip)) || "[]"); } catch { return []; }
@@ -55,6 +53,7 @@ class LocationTracker {
   private lastQueued: Point | null = null;
   private flushing = false;
   private wakeLock: { release: () => Promise<void> } | null = null;
+  private cfg: TrackingConfig = DEFAULT_TRACKING;
 
   subscribe(fn: (s: TrackerState) => void) {
     this.listeners.add(fn);
@@ -72,9 +71,11 @@ class LocationTracker {
     return this.lastQueued ? { lat: this.lastQueued.lat, lng: this.lastQueued.lng } : null;
   }
 
-  start(tripId: string) {
+  /** cfg: from tracking_config(school) — interval/heartbeat set by the school, clamped server-side. */
+  start(tripId: string, cfg: TrackingConfig = DEFAULT_TRACKING) {
     if (typeof window === "undefined") return;
-    if (this.state.active && this.state.tripId === tripId) return;
+    if (this.state.active && this.state.tripId === tripId && JSON.stringify(this.cfg) === JSON.stringify(cfg)) return;
+    this.cfg = cfg;
     this.stop(false);
     if (!("geolocation" in navigator)) { this.set({ permission: "unavailable", error: "الجهاز لا يدعم تحديد الموقع" }); return; }
 
@@ -89,7 +90,7 @@ class LocationTracker {
       },
       { enableHighAccuracy: true, maximumAge: 5_000, timeout: 30_000 },
     );
-    this.timer = setInterval(() => void this.flush(), FLUSH_EVERY_MS);
+    this.timer = setInterval(() => this.tick(), cfg.gps_interval_s * 1000);
     window.addEventListener("online", this.onOnline);
     window.addEventListener("offline", this.onOffline);
     document.addEventListener("visibilitychange", this.onVisibility);
@@ -117,6 +118,16 @@ class LocationTracker {
     try { return localStorage.getItem(ACTIVE_KEY); } catch { return null; }
   }
 
+  private tick() {
+    // Heartbeat: some devices stop calling watchPosition while parked.
+    const silentFor = Date.now() - (this.state.lastFixAt ?? 0);
+    if (this.state.permission === "granted" && silentFor >= this.cfg.gps_heartbeat_s * 1000) {
+      navigator.geolocation.getCurrentPosition((p) => this.onFix(p), () => {},
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 15_000 });
+    }
+    void this.flush();
+  }
+
   private onOnline = () => { this.set({ online: true }); void this.flush(); };
   private onOffline = () => this.set({ online: false });
   private onVisibility = () => { if (document.visibilityState === "visible") { void this.acquireWakeLock(); void this.flush(); } };
@@ -137,10 +148,8 @@ class LocationTracker {
       t: new Date(pos.timestamp).toISOString(),
     };
     this.set({ permission: "granted", lastFixAt: Date.now(), accuracy: p.accuracy, error: null });
-    if (p.accuracy != null && p.accuracy > 150) return; // too imprecise to publish
     const last = this.lastQueued;
-    const due = !last || distance(last, p) >= MIN_DISTANCE_M || Date.parse(p.t) - Date.parse(last.t) >= MAX_INTERVAL_MS;
-    if (!due || !this.state.tripId) return;
+    if (!this.state.tripId || publishDecision(last ? toFix(last) : null, toFix(p), this.cfg) !== "publish") return;
     this.lastQueued = p;
     const q = readQueue(this.state.tripId);
     q.push(p);

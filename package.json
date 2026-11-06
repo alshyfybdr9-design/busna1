@@ -7,6 +7,7 @@
     "build": "pnpm --filter @busna/web build",
     "lint": "pnpm --filter @busna/web lint",
     "typecheck": "pnpm --filter @busna/web typecheck",
-    "test:db": "supabase/tests/run.sh"
+    "test:db": "supabase/tests/run.sh",
+    "test:web": "pnpm --filter @busna/web test"
   }
 }

@@ -9,6 +9,7 @@ import { supabaseBrowser } from "@/lib/supabase/client";
 import { must, useQuery } from "@/lib/use-query";
 import { toAppError } from "@/lib/errors";
 import { tracker, currentPosition, type TrackerState } from "@/lib/tracking";
+import { DEFAULT_TRACKING, trackingConfigFrom } from "@/lib/gps-policy";
 import { flushOutbox, sendAttendance } from "@/lib/outbox";
 import {
   attendanceLabel, attendanceTone, fmtAgo, fmtPhone, fmtTime, incidentCategoryLabel, periodLabel,
@@ -46,7 +47,10 @@ export default function TripConsole({ params }: { params: Promise<{ id: string }
     const t = must(trip) as (Trip & { bus: Bus | null }) | null;
     if (!t) return null;
     const role: "driver" | "supervisor" | null = myIds.has(t.driver_id ?? "") ? "driver" : myIds.has(t.supervisor_id ?? "") ? "supervisor" : null;
-    return { trip: t, roster: must(roster) as RosterRow[], stops: must(stops) as TripStop[], role };
+    // School-configured GPS cadence; the defaults are safe if it cannot be read.
+    const cfgRes = role === "driver" ? await sb.rpc("tracking_config", { p_school: t.school_id }) : null;
+    const gpsCfg = cfgRes && !cfgRes.error ? trackingConfigFrom(cfgRes.data) : DEFAULT_TRACKING;
+    return { trip: t, roster: must(roster) as RosterRow[], stops: must(stops) as TripStop[], role, gpsCfg };
   }, [id]);
 
   // Realtime: driver & supervisor devices stay in sync.
@@ -75,7 +79,7 @@ export default function TripConsole({ params }: { params: Promise<{ id: string }
   useEffect(() => {
     if (!trip || role !== "driver") return;
     const active = trip.status === "started" || trip.status === "in_progress";
-    if (active) tracker.start(trip.id);
+    if (active) tracker.start(trip.id, q.data?.gpsCfg);
     else if (tracker.current.tripId === trip.id) tracker.stop(true);
   }, [trip?.id, trip?.status, role, trip]);
 
@@ -135,7 +139,7 @@ export default function TripConsole({ params }: { params: Promise<{ id: string }
   async function startTrip() {
     const pos = await currentPosition();
     const r = await call(() => sb.rpc("start_trip", { p_trip: trip!.id, p_lat: pos?.lat ?? null, p_lng: pos?.lng ?? null }), "بدأت الرحلة — تم تفعيل مشاركة الموقع");
-    if (r) tracker.start(trip!.id);
+    if (r) tracker.start(trip!.id, q.data?.gpsCfg);
   }
   async function arrive() {
     const pos = await currentPosition();

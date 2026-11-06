@@ -2,12 +2,13 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
-  AlertOctagon, AlertTriangle, Bus, CheckCircle2, Clock, Gauge, MapPinOff, MessageCircle, RefreshCw, Users, X,
+  AlertOctagon, AlertTriangle, Bus, CheckCircle2, Clock, FileWarning, Gauge, MapPinOff, MessageCircle, RefreshCw, Users, X,
 } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { must, useQuery } from "@/lib/use-query";
-import { fmtAgo, fmtDate, fmtTime, periodLabel, todayIn, tripStatusLabel, tripTone, severityLabel, incidentCategoryLabel } from "@/lib/format";
-import type { DashboardStats, Incident, LivePosition, Trip, TripPeriod, TripStop } from "@/lib/types";
+import { complianceKindLabel, fmtAgo, fmtDate, fmtExpiry, fmtTime, gpsStateLabel, periodLabel, todayIn, tripStatusLabel, tripTone, severityLabel, incidentCategoryLabel } from "@/lib/format";
+import { gpsState, trackingConfigFrom } from "@/lib/gps-policy";
+import type { ComplianceItem, DashboardStats, Incident, LivePosition, School, Trip, TripPeriod, TripStop } from "@/lib/types";
 import { useSchool } from "@/components/admin/school-context";
 import { PageHeader } from "@/components/admin/shell";
 import { BusMap, type MapBus } from "@/components/map/bus-map";
@@ -23,7 +24,9 @@ interface DashTrip extends Trip {
   students: { status: string }[];
 }
 
-const STALE_MS = 3 * 60_000;
+/** Not "live" per the school's GPS thresholds (same rule as the server's fleet_live). */
+const isStale = (recordedAt: string | undefined, settings: School["settings"], now: number) =>
+  gpsState(recordedAt, trackingConfigFrom(settings), now) !== "live";
 
 export default function Dashboard() {
   const { school } = useSchool();
@@ -32,13 +35,14 @@ export default function Dashboard() {
   const late = school.settings?.late_threshold_min ?? 10;
 
   const q = useQuery(async () => {
-    const [stats, trips, live, incidents, overCap] = await Promise.all([
+    const [stats, trips, live, incidents, overCap, docs] = await Promise.all([
       sb.rpc("school_dashboard", { p_school: school.id }),
       sb.from("trips").select("*, bus:buses(code, plate_number, capacity), driver:staff!trips_driver_id_school_id_fkey(full_name), supervisor:staff!trips_supervisor_id_school_id_fkey(full_name), students:trip_students(status)")
         .eq("school_id", school.id).eq("trip_date", today).order("scheduled_start"),
       sb.from("bus_live_positions").select("*").eq("school_id", school.id),
       sb.from("incidents").select("*").eq("school_id", school.id).neq("status", "resolved").order("created_at", { ascending: false }).limit(20),
       sb.from("bus_load").select("*").eq("school_id", school.id).eq("over_capacity", true),
+      sb.from("fleet_compliance").select("*").eq("school_id", school.id).neq("state", "valid").order("days_left"),
     ]);
     return {
       stats: must(stats) as DashboardStats,
@@ -46,6 +50,7 @@ export default function Dashboard() {
       live: must(live) as LivePosition[],
       incidents: must(incidents) as Incident[],
       overCap: must(overCap) as { bus_id: string; code: string; capacity: number; assigned_students: number }[],
+      docs: must(docs) as ComplianceItem[],
     };
   }, [school.id, today]);
 
@@ -92,7 +97,7 @@ export default function Dashboard() {
   const mapBuses: MapBus[] = filtered.flatMap((t) => {
     const l = liveByTrip.get(t.id);
     if (!l) return [];
-    const stale = now - Date.parse(l.recorded_at) > STALE_MS;
+    const stale = isStale(l.recorded_at, school.settings, now);
     return [{ id: t.id, lat: l.lat, lng: l.lng, heading: l.heading, label: t.bus?.code ?? t.name,
       tone: t.emergency_active ? "red" : stale ? "gray" : isDelayed(t) ? "amber" : "brand", stale }];
   });
@@ -184,7 +189,7 @@ export default function Dashboard() {
         </section>
 
         {/* Alerts */}
-        <AlertsPanel loading={!q.data} trips={trips} incidents={q.data?.incidents ?? []} overCap={q.data?.overCap ?? []}
+        <AlertsPanel loading={!q.data} trips={trips} incidents={q.data?.incidents ?? []} overCap={q.data?.overCap ?? []} docs={q.data?.docs ?? []}
           liveByTrip={liveByTrip} now={now} late={late} openRequests={s?.open_requests ?? 0} onSelect={setSelected} />
       </div>
     </div>
@@ -222,7 +227,7 @@ function BusCard({ trip, live, now, onClose }: { trip: DashTrip; live?: LivePosi
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trip.id, live?.recorded_at]);
-  const stale = live ? now - Date.parse(live.recorded_at) > STALE_MS : true;
+  const stale = isStale(live?.recorded_at, school.settings, now);
   return (
     <div className="absolute inset-x-3 bottom-3 z-10 rounded-2xl border border-line bg-white p-4 shadow-pop sm:inset-x-auto sm:end-3 sm:w-80">
       <div className="flex items-start justify-between gap-2">
@@ -246,8 +251,9 @@ function BusCard({ trip, live, now, onClose }: { trip: DashTrip; live?: LivePosi
   );
 }
 
-function AlertsPanel({ loading, trips, incidents, overCap, liveByTrip, now, late, openRequests, onSelect }: {
+function AlertsPanel({ loading, trips, incidents, overCap, docs, liveByTrip, now, late, openRequests, onSelect }: {
   loading: boolean; trips: DashTrip[]; incidents: Incident[]; overCap: { bus_id: string; code: string; capacity: number; assigned_students: number }[];
+  docs: ComplianceItem[];
   liveByTrip: Map<string, LivePosition>; now: number; late: number; openRequests: number; onSelect: (id: string) => void;
 }) {
   const { school } = useSchool();
@@ -259,9 +265,14 @@ function AlertsPanel({ loading, trips, incidents, overCap, liveByTrip, now, late
   trips.filter((t) => t.delay_minutes > 0 && t.status !== "completed" && t.status !== "cancelled").forEach((t) => alerts.push({ key: "d" + t.id, level: "warning", icon: Clock, title: `تأخير ${t.delay_minutes} د: ${t.name}`, body: t.delay_reason ?? "", tripId: t.id }));
   trips.filter((t) => (t.status === "started" || t.status === "in_progress")).forEach((t) => {
     const l = liveByTrip.get(t.id);
-    if (!l || now - Date.parse(l.recorded_at) > STALE_MS)
-      alerts.push({ key: "g" + t.id, level: "warning", icon: MapPinOff, title: `انقطاع الموقع: ${t.bus?.code ?? t.name}`, body: l ? `آخر تحديث ${fmtAgo(l.recorded_at, now)}` : "لم يصل أي موقع منذ بدء الرحلة", tripId: t.id });
+    if (isStale(l?.recorded_at, school.settings, now)) {
+      const state = gpsState(l?.recorded_at, trackingConfigFrom(school.settings), now);
+      alerts.push({ key: "g" + t.id, level: "warning", icon: MapPinOff, title: `موقع ${gpsStateLabel[state]}: ${t.bus?.code ?? t.name}`, body: l ? `آخر تحديث ${fmtAgo(l.recorded_at, now)}` : "لم يصل أي موقع منذ بدء الرحلة", tripId: t.id });
+    }
   });
+  docs.forEach((d) => alerts.push({ key: `doc-${d.entity_id}-${d.kind}`, level: d.state === "expired" ? "critical" : "warning", icon: FileWarning,
+    title: `${complianceKindLabel[d.kind]}: ${d.label}`, body: fmtExpiry(d.days_left),
+    href: `/admin/${school.slug}/${d.entity_type === "bus" ? "fleet" : "staff"}` }));
   overCap.forEach((b) => alerts.push({ key: "c" + b.bus_id, level: "warning", icon: Gauge, title: `تجاوز سعة ${b.code}`, body: `${b.assigned_students} طالب مخصص والسعة ${b.capacity}`, href: `/admin/${school.slug}/fleet` }));
   if (openRequests > 0) alerts.push({ key: "r", level: "info", icon: MessageCircle, title: `${openRequests} طلب من أولياء الأمور`, body: "بانتظار المراجعة", href: `/admin/${school.slug}/parents?tab=requests` });
 
