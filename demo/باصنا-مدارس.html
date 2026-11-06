@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>باصنا مدارس</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: control bar on top; "integrated" view = school dashboard + driver phone + parent phone side by side,
+   all driven by one simulated morning. Single views show one interface full size. */
+:root {
+  --bg: #F3F6F4;
+  --surface: #FFFFFF;
+  --surface-2: #F7FAF8;
+  --ink: #0F1E17;
+  --ink-2: #4A5B53;
+  --ink-3: #7A8A82;
+  --line: #DCE5E0;
+  --brand: #0E9F6E;
+  --brand-ink: #065F46;
+  --brand-soft: #E3F5EC;
+  --amber: #B45309;
+  --amber-soft: #FEF3C7;
+  --red: #C81E1E;
+  --red-soft: #FDE8E8;
+  --blue: #0369A1;
+  --blue-soft: #E0F2FE;
+  --map-land: #EEF2EF;
+  --map-block: #E2E8E4;
+  --map-road: #FFFFFF;
+  --map-road-edge: #D3DCD7;
+  --shadow: 0 1px 2px rgb(15 30 23 / .05), 0 2px 8px rgb(15 30 23 / .06);
+  --font: "IBM Plex Sans Arabic", "Segoe UI", Tahoma, system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0D1411; --surface: #141E1A; --surface-2: #18241F; --ink: #E7F0EB; --ink-2: #A8B8B0; --ink-3: #7D8D85;
+  --line: #26352E; --brand: #2BB884; --brand-ink: #7FE0B8; --brand-soft: #143528; --amber: #F2B04D; --amber-soft: #3A2C10;
+  --red: #F27474; --red-soft: #3D1717; --blue: #6CC3F0; --blue-soft: #0E2B3B; --map-land: #111A16; --map-block: #18231E;
+  --map-road: #24332C; --map-road-edge: #2C3D35; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 2px 10px rgb(0 0 0 / .25); color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0D1411; --surface: #141E1A; --surface-2: #18241F; --ink: #E7F0EB; --ink-2: #A8B8B0; --ink-3: #7D8D85;
+  --line: #26352E; --brand: #2BB884; --brand-ink: #7FE0B8; --brand-soft: #143528; --amber: #F2B04D; --amber-soft: #3A2C10;
+  --red: #F27474; --red-soft: #3D1717; --blue: #6CC3F0; --blue-soft: #0E2B3B; --map-land: #111A16; --map-block: #18231E;
+  --map-road: #24332C; --map-road-edge: #2C3D35; --shadow: 0 1px 2px rgb(0 0 0 / .3), 0 2px 10px rgb(0 0 0 / .25); color-scheme: dark; }
+
+* { box-sizing: border-box; }
+html, body { direction: rtl; }
+body { background: var(--bg); color: var(--ink); font-family: var(--font); font-size: 14px; line-height: 1.55;
+  font-variant-numeric: tabular-nums; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 32px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--surface); }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+/* top bar */
+.bar { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 20; margin-inline: calc(-1 * max(16px, env(safe-area-inset-left, 0px)));
+  padding: 10px max(16px, env(safe-area-inset-right, 0px)); background: var(--surface); border-bottom: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; }
+.logo svg { width: 30px; height: 30px; }
+.chip { font-size: 11px; font-weight: 600; letter-spacing: .02em; padding: 2px 8px; border-radius: 99px; background: var(--amber-soft); color: var(--amber); }
+.tabs { display: flex; flex-wrap: wrap; gap: 2px; background: var(--surface-2); border: 1px solid var(--line); padding: 3px; border-radius: 12px; }
+.tabs button { border: 0; background: none; padding: 6px 12px; border-radius: 9px; color: var(--ink-2); font-size: 13px; }
+.tabs button[aria-selected="true"] { background: var(--surface); color: var(--ink); font-weight: 600; box-shadow: var(--shadow); }
+.sim { display: flex; align-items: center; gap: 8px; margin-inline-start: auto; flex-wrap: wrap; }
+.clock { font-weight: 700; font-size: 18px; min-width: 64px; text-align: center; }
+.seg { display: flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--surface); padding: 5px 9px; font-size: 12px; color: var(--ink-2); }
+.seg button[aria-pressed="true"] { background: var(--brand-soft); color: var(--brand-ink); font-weight: 700; }
+.btn { border: 1px solid var(--line); background: var(--surface); border-radius: 10px; padding: 6px 12px; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.btn:hover { background: var(--surface-2); }
+.btn.primary { background: var(--brand); color: #fff; border-color: transparent; }
+.btn.primary:hover { filter: brightness(.95); }
+
+.intro { margin: 14px 0; color: var(--ink-2); max-width: 90ch; }
+.intro b { color: var(--ink); }
+
+/* integrated layout */
+.grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 360px 360px; align-items: start; }
+@media (max-width: 1320px) { .grid { grid-template-columns: minmax(0,1fr) 360px; } .grid .slot-parent { grid-column: 2; } .grid .slot-admin { grid-row: span 2; } }
+@media (max-width: 900px) { .grid { grid-template-columns: minmax(0,1fr); } .grid .slot-parent, .grid .slot-admin { grid-column: auto; grid-row: auto; } }
+.single { max-width: 1200px; margin-inline: auto; }
+.single.phone-only { max-width: 400px; }
+.slot-label { font-size: 12px; font-weight: 600; color: var(--ink-3); letter-spacing: .02em; margin: 0 4px 6px; display: flex; justify-content: space-between; }
+
+/* panels */
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); min-width: 0; }
+.panel-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+.panel-h h2 { font-size: 15px; }
+.muted { color: var(--ink-3); font-size: 12px; }
+
+/* KPIs */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px 16px; padding: 14px 16px; }
+.kpi dt { font-size: 12px; color: var(--ink-3); }
+.kpi dd { margin: 2px 0 0; font-size: 24px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+.dot { width: 8px; height: 8px; border-radius: 99px; display: inline-block; flex: none; }
+
+/* badges */
+.badge { display: inline-flex; align-items: center; gap: 5px; padding: 1px 9px; border-radius: 99px; font-size: 12px; font-weight: 500; white-space: nowrap; background: var(--surface-2); color: var(--ink-2); border: 1px solid var(--line); }
+.badge.brand { background: var(--brand-soft); color: var(--brand-ink); border-color: transparent; }
+.badge.amber { background: var(--amber-soft); color: var(--amber); border-color: transparent; }
+.badge.red { background: var(--red-soft); color: var(--red); border-color: transparent; }
+.badge.blue { background: var(--blue-soft); color: var(--blue); border-color: transparent; }
+.badge .pulse { width: 6px; height: 6px; border-radius: 99px; background: currentColor; animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .3; } }
+
+/* map */
+.map { position: relative; background: var(--map-land); border-radius: 0; overflow: hidden; }
+.map svg { display: block; width: 100%; height: auto; }
+.map .legend { position: absolute; inset-inline-start: 10px; bottom: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 4px 10px; font-size: 11px; color: var(--ink-2); display: flex; gap: 10px; }
+.bus-card { position: absolute; inset-inline-end: 10px; top: 10px; width: min(280px, calc(100% - 20px)); background: var(--surface); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); padding: 12px; font-size: 13px; }
+.bus-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; margin: 8px 0 0; }
+.bus-card dt { font-size: 11px; color: var(--ink-3); }
+.bus-card dd { margin: 0; font-weight: 600; }
+
+/* lists */
+.alerts { padding: 10px; display: grid; gap: 8px; max-height: 300px; overflow-y: auto; }
+.alert { display: flex; gap: 10px; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 13px; }
+.alert.critical { background: var(--red-soft); border-color: transparent; color: var(--red); }
+.alert.warning { background: var(--amber-soft); border-color: transparent; color: var(--amber); }
+.alert b { display: block; color: inherit; }
+.alert span { color: var(--ink-2); }
+.alert.critical span, .alert.warning span { color: inherit; opacity: .85; }
+.ok { padding: 22px; text-align: center; color: var(--ink-3); }
+.timeline { list-style: none; margin: 0; padding: 12px 16px; display: grid; gap: 10px; max-height: 320px; overflow-y: auto; }
+.timeline li { display: grid; grid-template-columns: 52px 1fr; gap: 8px; font-size: 13px; }
+.timeline time { color: var(--ink-3); font-size: 12px; }
+.timeline .who { color: var(--ink-3); font-size: 12px; }
+.cols { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 16px; }
+@media (max-width: 700px) { .cols { grid-template-columns: minmax(0,1fr); } }
+.stack { display: grid; gap: 16px; }
+.tbl-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 560px; }
+th { text-align: start; font-weight: 500; color: var(--ink-3); font-size: 12px; padding: 8px 12px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
+td { padding: 9px 12px; border-bottom: 1px solid var(--line); }
+tr:last-child td { border-bottom: 0; }
+
+/* phones */
+.phone { width: 100%; max-width: 380px; margin-inline: auto; border-radius: 34px; background: var(--ink); padding: 10px; box-shadow: 0 20px 40px -18px rgb(15 30 23 / .45); }
+.screen { border-radius: 26px; overflow: hidden; background: var(--bg); height: 720px; display: flex; flex-direction: column; position: relative; }
+.status-bar { display: flex; justify-content: space-between; padding: 8px 18px 4px; font-size: 11px; font-weight: 600; background: var(--surface); }
+.app-h { background: var(--surface); padding: 6px 14px 10px; border-bottom: 1px solid var(--line); }
+.app-h h3 { font-size: 16px; }
+.app-body { flex: 1; overflow-y: auto; padding: 12px; display: grid; gap: 10px; align-content: start; }
+.app-foot { background: var(--surface); border-top: 1px solid var(--line); padding: 10px 12px 14px; display: grid; gap: 8px; }
+.big { border: 0; border-radius: 16px; height: 54px; font-size: 16px; font-weight: 700; width: 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.big.go { background: var(--brand); color: #fff; }
+.big.out { background: var(--surface); border: 2px solid var(--brand); color: var(--brand-ink); }
+.big.stop { background: var(--red); color: #fff; }
+.big:disabled { opacity: .45; cursor: not-allowed; }
+.gps { display: flex; align-items: center; gap: 8px; border-radius: 10px; padding: 6px 10px; font-size: 12px; margin-top: 8px; background: var(--brand-soft); color: var(--brand-ink); }
+.gps.off { background: var(--surface-2); color: var(--ink-3); }
+.counts { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.counts div { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; text-align: center; padding: 6px 2px; }
+.counts b { display: block; font-size: 19px; }
+.counts span { font-size: 11px; color: var(--ink-3); }
+.stop-h { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--ink-2); margin-top: 4px; }
+.stu { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 8px; }
+.stu.boarded { border-color: var(--brand); }
+.av { width: 38px; height: 38px; border-radius: 99px; display: grid; place-items: center; background: var(--brand-soft); color: var(--brand-ink); font-weight: 700; font-size: 13px; flex: none; }
+.stu .nm { flex: 1; min-width: 0; }
+.stu .nm b { display: block; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.act { display: flex; gap: 5px; }
+.act button { border: 1px solid var(--line); background: var(--surface); border-radius: 11px; height: 40px; min-width: 40px; padding: 0 10px; font-size: 13px; font-weight: 600; }
+.act .yes { background: var(--brand); color: #fff; border-color: transparent; }
+.act .drop { background: var(--blue); color: #fff; border-color: transparent; }
+.act .no { color: var(--red); }
+.act button:disabled { opacity: .35; cursor: not-allowed; }
+.mini { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.mini button { border: 1px solid var(--line); background: var(--surface); border-radius: 12px; padding: 8px; font-size: 13px; }
+.note { font-size: 12px; color: var(--ink-3); text-align: center; padding: 4px; }
+
+/* parent */
+.kids { display: flex; gap: 6px; margin-top: 8px; }
+.kids button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 3px 12px 3px 4px; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.kids button[aria-selected="true"] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.kids .av { width: 24px; height: 24px; font-size: 10px; }
+.hero { border-radius: 20px; padding: 16px; color: #fff; background: #1F3A2F; }
+.hero.brand { background: linear-gradient(160deg, #0E9F6E, #087B55); }
+.hero.blue { background: linear-gradient(160deg, #0B7FB8, #075E88); }
+.hero.amber { background: linear-gradient(160deg, #D97706, #B45309); }
+.hero.red { background: linear-gradient(160deg, #DC2626, #A51B1B); }
+.hero .t { font-size: 20px; font-weight: 700; margin-top: 10px; line-height: 1.35; }
+.hero .s { font-size: 13px; opacity: .9; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; }
+.card h4 { margin: 0 0 8px; font-size: 14px; }
+.locked { display: flex; gap: 10px; align-items: center; border-style: dashed; }
+.lock-ic { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; background: var(--surface-2); color: var(--ink-3); flex: none; }
+.facts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 13px; }
+.facts dt { font-size: 11px; color: var(--ink-3); }
+.facts dd { margin: 0; font-weight: 600; }
+.eta { display: grid; grid-template-columns: repeat(3, 1fr); text-align: center; border-top: 1px solid var(--line); }
+.eta div { padding: 8px 4px; }
+.eta div + div { border-inline-start: 1px solid var(--line); }
+.eta span { display: block; font-size: 11px; color: var(--ink-3); }
+.notif { display: flex; gap: 8px; padding: 9px 2px; border-bottom: 1px solid var(--line); }
+.notif:last-child { border-bottom: 0; }
+.notif .dot { margin-top: 7px; background: var(--brand); }
+.notif.read .dot { background: transparent; }
+.notif b { display: block; font-size: 13px; }
+.notif p { margin: 0; font-size: 13px; color: var(--ink-2); }
+.nav { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border-top: 1px solid var(--line); }
+.nav button { border: 0; background: none; padding: 9px 0 12px; font-size: 12px; color: var(--ink-3); position: relative; }
+.nav button[aria-current="page"] { color: var(--brand-ink); font-weight: 700; }
+.nav .count { position: absolute; top: 4px; inset-inline-end: 28%; background: var(--red); color: #fff; border-radius: 99px; font-size: 10px; font-weight: 700; padding: 0 5px; }
+.chat { display: grid; gap: 8px; }
+.msg { max-width: 88%; padding: 8px 12px; border-radius: 16px; font-size: 13px; white-space: pre-line; }
+.msg.me { background: var(--brand); color: #fff; justify-self: start; border-start-start-radius: 4px; }
+.msg.bot { background: var(--surface); border: 1px solid var(--line); justify-self: end; border-start-end-radius: 4px; }
+.sugg { display: flex; flex-wrap: wrap; gap: 6px; }
+.sugg button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 4px 10px; font-size: 12px; }
+.ask { display: flex; gap: 6px; padding: 8px 10px 12px; background: var(--surface); border-top: 1px solid var(--line); }
+.ask input { flex: 1; min-width: 0; height: 40px; border: 1px solid var(--line); border-radius: 12px; padding: 0 10px; font: inherit; background: var(--surface); color: var(--ink); }
+.ask button { width: 44px; border: 0; border-radius: 12px; background: var(--brand); color: #fff; font-size: 16px; }
+
+/* modal + toast */
+.modal { position: absolute; inset: 0; background: rgb(10 20 15 / .45); display: grid; place-items: end center; z-index: 5; }
+.sheet { background: var(--surface); width: 100%; border-radius: 22px 22px 0 0; padding: 16px; display: grid; gap: 10px; }
+.sheet h4 { margin: 0; font-size: 16px; }
+.sheet p { margin: 0; color: var(--ink-2); font-size: 13px; }
+.warnbox { border-radius: 12px; padding: 10px 12px; font-size: 13px; background: var(--red-soft); color: var(--red); }
+.warnbox.amber { background: var(--amber-soft); color: var(--amber); }
+.warnbox ul { margin: 6px 0 0; padding-inline-start: 18px; }
+.opts { display: flex; flex-wrap: wrap; gap: 6px; }
+.opts button { border: 1px solid var(--line); background: var(--surface); border-radius: 99px; padding: 5px 11px; font-size: 13px; }
+.opts button[aria-pressed="true"] { border-color: var(--brand); background: var(--brand-soft); color: var(--brand-ink); font-weight: 600; }
+.toasts { position: fixed; inset-inline: 0; bottom: max(16px, env(safe-area-inset-bottom, 0px)); display: grid; justify-items: center; gap: 6px; z-index: 50; pointer-events: none; padding-inline: 16px; }
+.toast { background: var(--ink); color: var(--bg); border-radius: 12px; padding: 9px 14px; font-size: 13px; box-shadow: var(--shadow); max-width: 420px; animation: tin .2s ease-out; }
+@keyframes tin { from { opacity: 0; transform: translateY(6px); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="bar">
+  <div class="logo">
+    <svg viewBox="0 0 64 64" aria-hidden="true"><rect width="64" height="64" rx="14" fill="#0E9F6E"/><rect x="14" y="14" width="36" height="30" rx="7" fill="#fff"/><rect x="18" y="19" width="28" height="11" rx="3" fill="#0E9F6E" opacity=".25"/><circle cx="22" cy="47" r="4" fill="#fff"/><circle cx="42" cy="47" r="4" fill="#fff"/></svg>
+    باصنا <span class="muted" style="font-weight:500">| مدارس الرواد الأهلية</span>
+    <span class="chip">عرض تجريبي</span>
+  </div>
+  <div class="tabs" role="tablist" aria-label="الواجهات" id="tabs"></div>
+  <div class="sim">
+    <span class="muted">وقت المحاكاة</span>
+    <span class="clock" id="clock" aria-live="off">6:12</span>
+    <div class="seg" role="group" aria-label="سرعة المحاكاة" id="speed"></div>
+    <button class="btn" id="pause" type="button">إيقاف مؤقت</button>
+    <button class="btn primary" id="auto" type="button">تشغيل السيناريو تلقائيًا</button>
+    <button class="btn" id="reset" type="button">إعادة البدء</button>
+  </div>
+</div>
+
+<p class="intro" id="intro"></p>
+<main id="app"></main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+"use strict";
+// ---------------------------------------------------------------------------
+// Map geometry (schematic of north Riyadh, SVG units)
+// ---------------------------------------------------------------------------
+const SCHOOL = { x: 300, y: 468, name: "مدارس الرواد الأهلية" };
+const ROADS = [
+  { d: "M40 330 H960", name: "طريق أنس بن مالك", lx: 860, ly: 322 },
+  { d: "M520 40 V610", name: "طريق الملك عبدالعزيز", lx: 532, ly: 80, v: true },
+  { d: "M520 150 H960", name: "شارع الأمير سعود", lx: 900, ly: 142 },
+  { d: "M90 200 V330", name: "", lx: 0, ly: 0 },
+  { d: "M120 500 H520", name: "شارع الملقا", lx: 200, ly: 492 },
+  { d: "M420 330 V500", name: "", lx: 0, ly: 0 },
+  { d: "M820 150 V610", name: "", lx: 0, ly: 0 },
+  { d: "M520 240 H700", name: "", lx: 0, ly: 0 },
+  { d: "M820 420 H960", name: "", lx: 0, ly: 0 },
+];
+const AREAS = [
+  { x: 560, y: 60, w: 380, h: 75, name: "حي النرجس" },
+  { x: 560, y: 170, w: 240, h: 140, name: "" },
+  { x: 60, y: 350, w: 340, h: 130, name: "حي الملقا" },
+  { x: 120, y: 60, w: 380, h: 120, name: "حي القيروان" },
+  { x: 560, y: 350, w: 240, h: 240, name: "حي الياسمين" },
+  { x: 840, y: 440, w: 110, h: 150, name: "" },
+  { x: 140, y: 520, w: 360, h: 80, name: "" },
+];
+
+// ---------------------------------------------------------------------------
+// Demo data
+// ---------------------------------------------------------------------------
+function freshState() {
+  return {
+    t: 6 * 3600 + 12 * 60,       // simulated clock (seconds since midnight)
+    speed: 3, paused: false, auto: false,
+    view: "all", parentChild: "s1", parentTab: "home", driverRole: "driver",
+    selectedBus: null, modal: null, chat: [], requests: [],
+    trips: {
+      T1: { id: "T1", name: "النرجس — صباحي", bus: "باص 1", plate: "أ ب ج 1234", capacity: 24, driver: "سعد القحطاني", supervisor: "نورة الدوسري", supPhone: "0503334455",
+        start: 6 * 3600 + 15 * 60, status: "scheduled", startedAt: null, arrivedAt: null, completedAt: null, delay: 0, delayReason: "", emergency: false,
+        path: [[900,150],[780,150],[640,150],[520,150],[520,240],[520,330],[520,500],[300,500],[300,478]],
+        stops: [{ name: "بوابة مجمع النرجس", at: [780,150], planned: 8 }, { name: "مسجد النرجس الكبير", at: [640,150], planned: 13 }, { name: "دوار النرجس الشمالي", at: [520,240], planned: 18 }],
+        dist: 0, dwell: 0, servedStops: [], lastGps: null, events: [], player: false },
+      T2: { id: "T2", name: "الملقا — صباحي", bus: "باص 2", plate: "د هـ و 5678", capacity: 30, driver: "فهد الشمري", supervisor: "أمل الشهراني",
+        start: 6 * 3600 + 20 * 60, status: "scheduled", startedAt: null, arrivedAt: null, completedAt: null, delay: 0, delayReason: "", emergency: false,
+        path: [[90,200],[90,330],[200,330],[330,330],[420,330],[420,500],[300,500],[300,478]],
+        stops: [{ name: "حديقة الملقا", at: [200,330], planned: 6 }, { name: "تقاطع الملقا 12", at: [330,330], planned: 10 }],
+        dist: 0, dwell: 0, servedStops: [], lastGps: null, events: [], player: false, scripted: true },
+      T3: { id: "T3", name: "الياسمين — صباحي", bus: "باص 3", plate: "ر س ط 9012", capacity: 12, driver: "ناصر البقمي", supervisor: "—",
+        start: 6 * 3600 + 30 * 60, status: "scheduled", startedAt: null, arrivedAt: null, completedAt: null, delay: 0, delayReason: "", emergency: false,
+        path: [[900,420],[820,420],[820,330],[520,330],[520,500],[300,500],[300,478]], stops: [], dist: 0, dwell: 0, servedStops: [], lastGps: null, events: [], player: false, neverStarts: true },
+    },
+    students: [
+      { id: "s1", name: "محمد عبدالله الحربي", grade: "الثالث الابتدائي", trip: "T1", stop: 0, parent: "p1", status: "pending" },
+      { id: "s2", name: "سارة عبدالله الحربي", grade: "الأول الابتدائي", trip: "T1", stop: 0, parent: "p1", status: "pending" },
+      { id: "s3", name: "يوسف فيصل الزهراني", grade: "الخامس الابتدائي", trip: "T1", stop: 1, parent: "p2", status: "pending" },
+      { id: "s4", name: "ريان سلطان المطيري", grade: "الثاني المتوسط", trip: "T1", stop: 2, parent: "p3", status: "pending" },
+      { id: "s5", name: "لمى سلطان المطيري", grade: "الرابع الابتدائي", trip: "T1", stop: 2, parent: "p3", status: "pending" },
+      { id: "s6", name: "عمر إبراهيم الشهري", grade: "الأول المتوسط", trip: "T2", stop: 0, parent: "p4", status: "pending" },
+      { id: "s7", name: "جود هيفاء العنزي", grade: "السادس الابتدائي", trip: "T2", stop: 1, parent: "p5", status: "pending" },
+      { id: "s8", name: "فيصل ناصر القحطاني", grade: "الثالث المتوسط", trip: "T2", stop: 1, parent: "p6", status: "pending" },
+      { id: "s9", name: "تالا خالد السبيعي", grade: "الثاني الابتدائي", trip: "T3", stop: null, parent: "p7", status: "pending" },
+      { id: "s10", name: "عبدالرحمن ماجد العمري", grade: "الأول المتوسط", trip: "T3", stop: null, parent: "p8", status: "pending" },
+    ],
+    notifs: [],
+    approached: {},
+  };
+}
+let S = freshState();
+const VIEWS = [["all", "العرض المتكامل"], ["admin", "لوحة الإدارة"], ["driver", "تطبيق السائق"], ["supervisor", "تطبيق المشرف"], ["parent", "تطبيق ولي الأمر"]];
+const INTRO = {
+  all: "اضغط <b>بدء الرحلة</b> في جوال السائق، ثم سجّل صعود الطلاب عند كل نقطة توقف. راقب كيف تتحدث لوحة الإدارة وتطبيق ولي الأمر فورًا. الخريطة عند ولي الأمر لا تظهر إلا بعد صعود ابنه. أو اضغط <b>تشغيل السيناريو تلقائيًا</b> لمشاهدة صباح كامل.",
+  admin: "لوحة متابعة المدرسة: المؤشرات، الخريطة المباشرة لكل الباصات، التنبيهات، والسجل الزمني. انقر على أي باص في الخريطة لعرض بطاقته.",
+  driver: "تطبيق السائق: أزرار كبيرة وخطوات واضحة. مشاركة الموقع تعمل أثناء الرحلة فقط، ولا يمكن إنهاء الرحلة وفي الباص طالب لم يُسجَّل نزوله.",
+  supervisor: "تطبيق المشرف: الحضور والملاحظات والتواصل مع أولياء الأمور. بدء الرحلة وإنهاؤها من صلاحيات السائق فقط.",
+  parent: "تطبيق ولي الأمر (عبدالله الحربي، ابنان على باص 1): الحالة المباشرة، الإشعارات، والمساعد الذكي.",
+};
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+const first = (n) => n.split(" ")[0];
+const initials = (n) => { const p = n.split(" "); return (p[0][0] || "") + (p[1] ? p[1][0] : ""); };
+function hm(sec) { const h = Math.floor(sec / 3600), m = Math.floor(sec / 60) % 60; return `${h}:${String(m).padStart(2, "0")}`; }
+const SPEED_U = 0.75;                   // svg units per simulated second (~27 km/h on this map scale)
+const KM_PER_U = 0.012;                 // map scale for distances shown to users
+function segs(path) { const out = []; let acc = 0; for (let i = 1; i < path.length; i++) { const [x1, y1] = path[i - 1], [x2, y2] = path[i]; const l = Math.hypot(x2 - x1, y2 - y1); out.push({ x1, y1, x2, y2, l, from: acc }); acc += l; } return { list: out, total: acc }; }
+function pointAt(path, d) { const { list, total } = segs(path); d = Math.max(0, Math.min(total, d)); for (const s of list) { if (d <= s.from + s.l) { const f = (d - s.from) / s.l; return { x: s.x1 + (s.x2 - s.x1) * f, y: s.y1 + (s.y2 - s.y1) * f, h: Math.atan2(s.y2 - s.y1, s.x2 - s.x1) * 180 / Math.PI }; } } const l = list[list.length - 1]; return { x: l.x2, y: l.y2, h: 0 }; }
+function distOfPoint(path, pt) { const { list } = segs(path); for (const s of list) { const onX = s.x1 === s.x2 && pt[0] === s.x1 && pt[1] >= Math.min(s.y1, s.y2) && pt[1] <= Math.max(s.y1, s.y2); const onY = s.y1 === s.y2 && pt[1] === s.y1 && pt[0] >= Math.min(s.x1, s.x2) && pt[0] <= Math.max(s.x1, s.x2); if (onX || onY) return s.from + Math.hypot(pt[0] - s.x1, pt[1] - s.y1); } return 0; }
+const totalLen = (t) => segs(t.path).total;
+const active = (t) => t.status === "started" || t.status === "in_progress";
+const kids = () => S.students.filter((s) => s.parent === "p1");
+const tripStudents = (id) => S.students.filter((s) => s.trip === id);
+const periodLbl = "الصباحية";
+function toast(msg) { const el = document.createElement("div"); el.className = "toast"; el.textContent = msg; $("#toasts").appendChild(el); setTimeout(() => el.remove(), 3800); }
+
+function log(trip, text, who, student) { trip.events.push({ t: S.t, text, who, student }); }
+function notifyParent(student, type, title, body) {
+  const key = `${student.id}:${type}`;
+  if (S.notifs.some((n) => n.key === key)) return;          // deduplicated like the real system
+  S.notifs.unshift({ key, parent: student.parent, student: student.id, title, body, t: S.t, read: false });
+  if (student.parent === "p1") toast(`🔔 ولي الأمر: ${body}`);
+}
+
+// ---------------------------------------------------------------------------
+// Trip engine (same rules as the real RPCs)
+// ---------------------------------------------------------------------------
+function startTrip(id, by = "السائق") {
+  const t = S.trips[id];
+  if (t.status !== "scheduled") return toast("لا يمكن بدء هذه الرحلة في حالتها الحالية");
+  t.status = "started"; t.startedAt = S.t; t.lastGps = S.t;
+  log(t, "بدء الرحلة ومشاركة الموقع", by);
+  tripStudents(id).filter((s) => s.status !== "absent").forEach((s) =>
+    notifyParent(s, "start", "بدأت الرحلة", `باص ${first(s.name)} بدأ الرحلة ${periodLbl}.`));
+  render();
+}
+
+const ALLOWED = { pending: ["boarded", "absent"], absent: ["pending", "boarded"], boarded: ["dropped", "pending"], dropped: ["boarded"] };
+function mark(sid, status, by) {
+  const s = S.students.find((x) => x.id === sid); const t = S.trips[s.trip];
+  if (t.status === "completed" || t.status === "cancelled") return toast("الرحلة منتهية");
+  if (t.status === "scheduled" && !["absent", "pending"].includes(status)) return toast("يجب بدء الرحلة قبل تسجيل الصعود");
+  if (!ALLOWED[s.status].includes(status)) return toast("لا يمكن تغيير الحالة بهذا الشكل");
+  s.status = status;
+  if (status === "boarded") {
+    s.boardedAt = S.t; s.droppedAt = null;
+    if (t.status === "started") t.status = "in_progress";
+    log(t, `صعود ${s.name}`, by, s.id);
+    notifyParent(s, "boarded", "صعود إلى الباص", `تم تسجيل صعود ${first(s.name)} إلى الباص.`);
+  } else if (status === "dropped") {
+    s.droppedAt = S.t; s.place = t.arrivedAt ? "school" : "stop";
+    log(t, `نزول ${s.name}`, by, s.id);
+    notifyParent(s, "dropped", s.place === "school" ? "الوصول إلى المدرسة" : "نزول من الباص",
+      s.place === "school" ? `وصل ${first(s.name)} إلى المدرسة بسلام.` : `تم تسجيل نزول ${first(s.name)} من الباص.`);
+  } else if (status === "absent") {
+    s.absentAt = S.t; log(t, `غياب ${s.name}`, by, s.id);
+    notifyParent(s, "absent", "تسجيل غياب", `تم تسجيل غياب ${first(s.name)} عن الرحلة ${periodLbl}.`);
+  } else {
+    s.boardedAt = null; log(t, `تراجع عن حالة ${s.name}`, by, s.id);
+  }
+  render();
+}
+
+function atSchool(t) { return t.dist >= totalLen(t) - 1; }
+function arrive(id, by = "السائق") {
+  const t = S.trips[id];
+  if (!active(t) || t.arrivedAt) return;
+  if (!atSchool(t)) { toast("الباص لم يصل إلى المدرسة بعد"); return; }
+  t.arrivedAt = S.t; t.status = "in_progress";
+  log(t, "الوصول إلى المدرسة", by);
+  tripStudents(id).filter((s) => s.status === "boarded").forEach((s) => {
+    s.status = "dropped"; s.droppedAt = S.t; s.place = "school";
+    log(t, `نزول ${s.name} (تلقائي عند الوصول)`, "النظام", s.id);
+    notifyParent(s, "dropped", "الوصول إلى المدرسة", `وصل ${first(s.name)} إلى المدرسة بسلام.`);
+  });
+  S.modal = null; render();
+}
+
+function endTrip(id, markAbsent, by = "السائق") {
+  const t = S.trips[id];
+  const onBoard = tripStudents(id).filter((s) => s.status === "boarded");
+  const pending = tripStudents(id).filter((s) => s.status === "pending");
+  if (onBoard.length) return toast("لا يمكن إنهاء الرحلة: يوجد طلاب داخل الباص");
+  if (pending.length && !markAbsent) return toast("يوجد طلاب لم تُسجّل حالتهم");
+  pending.forEach((s) => { s.status = "absent"; s.absentAt = S.t; log(t, `غياب ${s.name} (عند الإنهاء)`, by, s.id);
+    notifyParent(s, "absent", "تسجيل غياب", `تم تسجيل غياب ${first(s.name)} عن الرحلة ${periodLbl}.`); });
+  t.status = "completed"; t.completedAt = S.t; t.emergency = false;
+  log(t, "إنهاء الرحلة وإيقاف مشاركة الموقع", by);
+  S.modal = null; render();
+}
+
+function reportDelay(id, min, reason, by) {
+  const t = S.trips[id]; t.delay = min; t.delayReason = reason;
+  log(t, `تأخير ${min} دقيقة: ${reason}`, by);
+  tripStudents(id).filter((s) => ["pending", "boarded"].includes(s.status)).forEach((s) =>
+    notifyParent(s, "delay" + min, "تأخر الرحلة", `الرحلة ${periodLbl} متأخرة حوالي ${min} دقيقة. السبب: ${reason}`));
+  S.modal = null; render();
+}
+
+function reportIncident(id, critical, text, by) {
+  const t = S.trips[id];
+  log(t, `بلاغ ${critical ? "طارئ" : ""}: ${text}`, by);
+  if (critical && active(t)) {
+    t.emergency = true;
+    tripStudents(id).filter((s) => s.status === "boarded").forEach((s) =>
+      notifyParent(s, "issue", "تنبيه بخصوص الرحلة", "حدثت مشكلة أثناء الرحلة الصباحية، والمدرسة تتابع الوضع الآن."));
+  }
+  S.modal = null; toast(critical ? "تم إرسال البلاغ للإدارة فورًا" : "تم تسجيل البلاغ"); render();
+}
+
+// ---------------------------------------------------------------------------
+// Simulation tick
+// ---------------------------------------------------------------------------
+function step(dt) {
+  S.t += dt;
+  for (const t of Object.values(S.trips)) {
+    // scripted bus 2: starts on time, loses time in traffic
+    if (t.scripted && t.status === "scheduled" && S.t >= t.start) startTrip(t.id, "السائق");
+    if (t.scripted && active(t) && !t.delay && S.t >= t.start + 6 * 60) reportDelay(t.id, 7, "ازدحام على طريق أنس بن مالك", "السائق");
+    // autopilot for bus 1
+    if (S.auto && t.id === "T1" && t.status === "scheduled" && S.t >= t.start) startTrip("T1", "السائق");
+    if (!active(t)) continue;
+    t.lastGps = S.t;
+    if (t.dwell > 0) { t.dwell -= dt; continue; }
+    const before = t.dist;
+    t.dist = Math.min(totalLen(t), t.dist + SPEED_U * dt * (t.scripted && t.delay ? 0.6 : 1));
+    if (t.status === "started" && t.dist > 0) t.status = "in_progress";
+    // approaching / reaching stops
+    t.stops.forEach((st, i) => {
+      const d = distOfPoint(t.path, st.at);
+      const here = tripStudents(t.id).filter((s) => s.stop === i);
+      if (d - t.dist < 90 && d - t.dist > 0 && !S.approached[t.id + i]) {
+        S.approached[t.id + i] = true;
+        here.filter((s) => s.status === "pending").forEach((s) => notifyParent(s, "approach", "الباص يقترب", `باص ${first(s.name)} يقترب من نقطة الصعود.`));
+      }
+      if (before < d && t.dist >= d && !t.servedStops.includes(i)) {
+        t.servedStops.push(i); t.dist = d; t.dwell = 45;
+        log(t, `المرور بنقطة ${st.name}`, "GPS");
+        if (t.scripted || S.auto) setTimeout(() => autoBoard(t.id, i), 300);
+        else if (t.id === "T1") toast(`باص 1 وصل إلى «${st.name}» — سجّل صعود الطلاب`);
+      }
+    });
+    if ((t.scripted || S.auto) && atSchool(t) && !t.arrivedAt) arrive(t.id, "السائق");
+    if ((t.scripted || S.auto) && t.arrivedAt && t.status !== "completed" && S.t > t.arrivedAt + 40) endTrip(t.id, true, "السائق");
+  }
+}
+function autoBoard(id, stopIdx) {
+  tripStudents(id).filter((s) => s.stop === stopIdx && s.status === "pending").forEach((s) => {
+    if (s.id === "s5") mark(s.id, "absent", "المشرف"); else mark(s.id, "boarded", id === "T1" ? "السائق" : "المشرف");
+  });
+}
+
+let last = performance.now();
+function loop(now) {
+  const real = Math.min(0.5, (now - last) / 1000); last = now;
+  if (!S.paused) {
+    const before = JSON.stringify([S.notifs.length, Object.values(S.trips).map((t) => [t.status, t.events.length, t.arrivedAt, t.servedStops.length, t.dwell > 0])]);
+    step(real * 10 * S.speed);
+    const after = JSON.stringify([S.notifs.length, Object.values(S.trips).map((t) => [t.status, t.events.length, t.arrivedAt, t.servedStops.length, t.dwell > 0])]);
+    if (before !== after) render(); else live();
+  }
+  requestAnimationFrame(loop);
+}
+
+// ---------------------------------------------------------------------------
+// Derived values
+// ---------------------------------------------------------------------------
+function stats() {
+  const st = S.students;
+  const trips = Object.values(S.trips);
+  return {
+    total: st.length,
+    onBus: st.filter((s) => s.status === "boarded").length,
+    atSchool: st.filter((s) => s.status === "dropped" && s.place === "school").length,
+    absent: st.filter((s) => s.status === "absent").length,
+    activeTrips: trips.filter(active).length,
+    delayed: trips.filter((t) => (t.delay && t.status !== "completed") || (t.status === "scheduled" && S.t > t.start + 600)).length,
+    busesAvail: 3 - trips.filter(active).length,
+    completed: trips.filter((t) => t.status === "completed").length,
+  };
+}
+function alerts() {
+  const out = [];
+  for (const t of Object.values(S.trips)) {
+    if (t.emergency) out.push(["critical", `طوارئ: ${t.name}`, `${t.bus} — ${t.driver}`, t.id]);
+    if (t.status === "scheduled" && S.t > t.start + 600) out.push(["warning", `لم تبدأ: ${t.name}`, `موعدها ${hm(t.start)} — السائق ${t.driver}`, t.id]);
+    if (t.delay && t.status !== "completed") out.push(["warning", `تأخير ${t.delay} د: ${t.name}`, t.delayReason, t.id]);
+  }
+  if (S.requests.length) out.push(["info", `${S.requests.length} طلب من أولياء الأمور`, S.requests[0].text, null]);
+  return out;
+}
+function tone(t) { if (t.emergency) return "red"; if (t.status === "completed") return "blue"; if (t.delay || (t.status === "scheduled" && S.t > t.start + 600)) return "amber"; return active(t) ? "brand" : ""; }
+const statusLbl = { scheduled: "مجدولة", started: "بدأت", in_progress: "جارية", completed: "مكتملة", cancelled: "ملغاة" };
+const attLbl = { pending: "لم يصعد", boarded: "في الباص", absent: "غائب", dropped: "نزل" };
+const attTone = { pending: "", boarded: "brand", absent: "red", dropped: "blue" };
+function tripBadge(t) { const late = t.status === "scheduled" && S.t > t.start + 600; return `<span class="badge ${tone(t)}">${active(t) ? '<span class="pulse"></span>' : ""}${late ? "متأخرة" : statusLbl[t.status]}${t.delay && t.status !== "completed" ? ` +${t.delay}د` : ""}</span>`; }
+
+// ---------------------------------------------------------------------------
+// Map rendering
+// ---------------------------------------------------------------------------
+function mapSVG(opts) {
+  const { trips = [], focusTrip = null, path = false, dest = null, selected = null } = opts;
+  let s = `<svg viewBox="0 0 1000 640" role="img" aria-label="خريطة الباصات">`;
+  s += `<rect width="1000" height="640" fill="var(--map-land)"/>`;
+  AREAS.forEach((a) => { s += `<rect x="${a.x}" y="${a.y}" width="${a.w}" height="${a.h}" rx="10" fill="var(--map-block)"/>`; if (a.name) s += `<text x="${a.x + a.w - 12}" y="${a.y + 24}" text-anchor="start" direction="rtl" font-size="15" fill="var(--ink-3)" font-weight="600">${a.name}</text>`; });
+  ROADS.forEach((r) => { s += `<path d="${r.d}" stroke="var(--map-road-edge)" stroke-width="20" fill="none" stroke-linecap="round"/><path d="${r.d}" stroke="var(--map-road)" stroke-width="15" fill="none" stroke-linecap="round"/>`; });
+  ROADS.forEach((r) => { if (r.name) s += `<text x="${r.lx}" y="${r.ly}" font-size="12" fill="var(--ink-3)" direction="rtl" ${r.v ? `transform="rotate(90 ${r.lx} ${r.ly})"` : ""}>${r.name}</text>`; });
+  if (focusTrip && path) {
+    const t = S.trips[focusTrip];
+    s += `<polyline points="${t.path.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--brand)" stroke-opacity=".28" stroke-width="7" stroke-dasharray="2 12" stroke-linecap="round"/>`;
+    const done = [[...t.path[0]]]; const { list } = segs(t.path);
+    for (const sg of list) { if (t.dist >= sg.from + sg.l) done.push([sg.x2, sg.y2]); else { const p = pointAt(t.path, t.dist); done.push([p.x, p.y]); break; } }
+    if (t.dist > 0) s += `<polyline points="${done.map((p) => p.join(",")).join(" ")}" fill="none" stroke="var(--brand)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>`;
+    if (opts.stops) t.stops.forEach((st, i) => { s += `<circle cx="${st.at[0]}" cy="${st.at[1]}" r="8" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="3"/><text x="${st.at[0]}" y="${st.at[1] - 16}" text-anchor="middle" font-size="12" fill="var(--ink-2)" font-weight="600">${i + 1}</text>`; });
+  }
+  // school
+  s += `<g><rect x="${SCHOOL.x - 22}" y="${SCHOOL.y - 22}" width="44" height="44" rx="12" fill="var(--surface)" stroke="var(--ink)" stroke-width="2.5"/><path d="M${SCHOOL.x - 11} ${SCHOOL.y + 9} V${SCHOOL.y - 3} L${SCHOOL.x} ${SCHOOL.y - 11} L${SCHOOL.x + 11} ${SCHOOL.y - 3} V${SCHOOL.y + 9} Z" fill="var(--ink)"/><text x="${SCHOOL.x}" y="${SCHOOL.y + 42}" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${SCHOOL.name}</text></g>`;
+  if (dest) s += dest;
+  trips.forEach((id) => {
+    const t = S.trips[id]; if (!active(t)) return;
+    const p = pointAt(t.path, t.dist);
+    const col = t.emergency ? "#DC2626" : t.delay ? "#D97706" : "#0E9F6E";
+    const sel = selected === id;
+    s += `<g data-bus="${id}" style="cursor:pointer" transform="translate(${p.x.toFixed(1)} ${p.y.toFixed(1)})">
+      <circle r="${sel ? 34 : 28}" fill="${col}" opacity=".16"/>
+      <g transform="rotate(${(p.h + 90).toFixed(0)})"><path d="M0 -29 L7 -20 H-7 Z" fill="${col}"/></g>
+      <circle r="${sel ? 21 : 18}" fill="${col}" stroke="#fff" stroke-width="4"/>
+      <path d="M-8 -6 h16 a3 3 0 0 1 3 3 v8 h-22 v-8 a3 3 0 0 1 3 -3z M-9 5 h18" stroke="#fff" stroke-width="2.2" fill="none" stroke-linejoin="round"/>
+      <rect x="-30" y="25" width="60" height="22" rx="7" fill="var(--surface)" stroke="var(--line)"/>
+      <text y="41" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ink)">${t.bus}</text></g>`;
+  });
+  return s + `</svg>`;
+}
+
+// ---------------------------------------------------------------------------
+// Admin
+// ---------------------------------------------------------------------------
+function adminHTML(full) {
+  const k = stats();
+  const kpi = (l, v, dot) => `<div class="kpi"><dt>${l}</dt><dd>${dot ? `<span class="dot" style="background:${dot}"></span>` : ""}${v}</dd></div>`;
+  const al = alerts();
+  const t1 = S.trips.T1;
+  const sel = S.selectedBus ? S.trips[S.selectedBus] : null;
+  let card = "";
+  if (sel && active(sel)) {
+    const onb = tripStudents(sel.id).filter((s) => s.status === "boarded").length;
+    card = `<div class="bus-card"><div style="display:flex;justify-content:space-between;gap:8px"><b>${sel.bus} · <span class="muted">${sel.plate}</span></b><button class="btn" data-a="closecard" style="padding:0 8px" aria-label="إغلاق">✕</button></div>
+      <div class="muted">${sel.name}</div><dl>
+      <div><dt>السائق</dt><dd>${sel.driver}</dd></div><div><dt>المشرف</dt><dd>${sel.supervisor}</dd></div>
+      <div><dt>الطلاب في الباص</dt><dd>${onb} من ${tripStudents(sel.id).length}</dd></div><div><dt>آخر تحديث للموقع</dt><dd data-live="gps-${sel.id}">الآن</dd></div>
+      <div><dt>الحالة</dt><dd>${tripBadge(sel)}</dd></div><div><dt>بدأت</dt><dd>${hm(sel.startedAt)}</dd></div></dl></div>`;
+  }
+  const map = `<div class="map" data-map="admin">${mapSVG({ trips: Object.keys(S.trips), focusTrip: S.selectedBus, path: !!S.selectedBus, stops: true, selected: S.selectedBus })}${card}
+    <div class="legend"><span><span class="dot" style="background:#0E9F6E"></span> في الموعد</span><span><span class="dot" style="background:#D97706"></span> متأخر</span><span><span class="dot" style="background:#DC2626"></span> طوارئ</span></div></div>`;
+  const alertsH = al.length ? al.map(([lv, a, b, tid]) => `<button class="alert ${lv}" ${tid ? `data-a="selbus" data-id="${tid}"` : ""} style="text-align:start;width:100%;background-clip:padding-box"><div><b>${esc(a)}</b><span>${esc(b)}</span></div></button>`).join("")
+    : `<div class="ok">✓ كل شيء يسير بشكل طبيعي</div>`;
+  const tl = t1.events.length ? [...t1.events].reverse().map((e) => `<li><time>${hm(e.t)}</time><div>${esc(e.text)}<div class="who">${e.who}</div></div></li>`).join("") : `<li><span class="muted" style="grid-column:1/-1">لم تبدأ الرحلة بعد — الانطلاق ${hm(t1.start)}</span></li>`;
+
+  const kpis = `<section class="panel"><div class="kpis">
+      ${kpi("مسجلون في النقل", k.total)}${kpi("في الباصات الآن", k.onBus, "#0E9F6E")}${kpi("وصلوا المدرسة", k.atSchool)}${kpi("غائبون", k.absent)}
+      ${kpi("رحلات نشطة", k.activeTrips, "#0E9F6E")}${kpi("رحلات متأخرة", k.delayed, k.delayed ? "#D97706" : "")}${kpi("باصات متاحة", k.busesAvail)}${kpi("سائقون / مشرفون", "3 / 2")}</div></section>`;
+  const mapPanel = `<section class="panel" style="overflow:hidden"><div class="panel-h"><h2>الخريطة المباشرة</h2><span class="muted">انقر على باص لعرض تفاصيله</span></div>${map}</section>`;
+  const alertsPanel = `<section class="panel"><div class="panel-h"><h2>التنبيهات والمشكلات</h2><span class="badge ${al.some((a) => a[0] === "critical") ? "red" : al.length ? "amber" : "brand"}">${al.length}</span></div><div class="alerts">${alertsH}</div></section>`;
+  const tlPanel = `<section class="panel"><div class="panel-h"><h2>السجل الزمني — ${t1.name}</h2>${tripBadge(t1)}</div><ol class="timeline">${tl}</ol></section>`;
+  if (!full) return `<div class="stack">${kpis}${mapPanel}<div class="cols">${alertsPanel}${tlPanel}</div></div>`;
+
+  const tripsRows = Object.values(S.trips).map((t) => { const st = tripStudents(t.id); const c = (x) => st.filter((s) => s.status === x).length;
+    return `<tr><td><b>${t.name}</b></td><td>${hm(t.start)}</td><td>${t.bus}</td><td>${t.driver}</td><td>${st.length} · في الباص ${c("boarded")} · غائب ${c("absent")}</td><td>${tripBadge(t)}</td></tr>`; }).join("");
+  const stuRows = S.students.map((s) => `<tr><td><b>${s.name}</b></td><td>${s.grade}</td><td>${S.trips[s.trip].bus}</td><td><span class="badge ${attTone[s.status]}">${attLbl[s.status]}</span></td><td>${s.boardedAt ? hm(s.boardedAt) : "—"}</td><td>${s.droppedAt ? hm(s.droppedAt) : "—"}</td></tr>`).join("");
+  const req = S.requests.length ? S.requests.map((r) => `<div class="alert"><div><b>${esc(r.kind)} — ${esc(r.child)}</b><span>${esc(r.text)} · ${hm(r.t)}</span></div></div>`).join("") : `<div class="ok">لا توجد طلبات. جرّب طلب «تغيير نقطة الصعود» من المساعد في تطبيق ولي الأمر.</div>`;
+  return `<div class="stack">${kpis}<div class="cols" style="grid-template-columns:minmax(0,1.6fr) minmax(0,1fr)">${mapPanel}<div class="stack">${alertsPanel}<section class="panel"><div class="panel-h"><h2>طلبات أولياء الأمور</h2></div><div class="alerts">${req}</div></section></div></div>
+    <section class="panel"><div class="panel-h"><h2>رحلات اليوم</h2><span class="muted">تُنشأ تلقائيًا من الجداول المتكررة</span></div><div class="tbl-wrap"><table><thead><tr><th>الرحلة</th><th>الانطلاق</th><th>الباص</th><th>السائق</th><th>الطلاب</th><th>الحالة</th></tr></thead><tbody>${tripsRows}</tbody></table></div></section>
+    <div class="cols">${tlPanel}<section class="panel"><div class="panel-h"><h2>الطلاب اليوم</h2></div><div class="tbl-wrap"><table><thead><tr><th>الطالب</th><th>الصف</th><th>الباص</th><th>الحالة</th><th>الصعود</th><th>النزول</th></tr></thead><tbody>${stuRows}</tbody></table></div></section></div></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Driver / supervisor phone
+// ---------------------------------------------------------------------------
+function staffHTML(role) {
+  const t = S.trips.T1; const st = tripStudents("T1");
+  const c = (x) => st.filter((s) => s.status === x).length;
+  const isDriver = role === "driver";
+  const closed = t.status === "completed";
+  const stopNow = t.dwell > 0 && t.servedStops.length ? t.servedStops[t.servedStops.length - 1] : null;
+  const groups = t.stops.map((stp, i) => {
+    const rows = st.filter((s) => s.stop === i).map((s) => {
+      const b = s.status;
+      let act = "";
+      if (!closed) {
+        if (b === "pending") act = `<button class="no" data-a="mark" data-id="${s.id}" data-s="absent" aria-label="غياب ${s.name}">غائب</button><button class="yes" data-a="mark" data-id="${s.id}" data-s="boarded" ${active(t) ? "" : "disabled"}>صعد</button>`;
+        else if (b === "boarded") act = `<button data-a="mark" data-id="${s.id}" data-s="pending" aria-label="تراجع">↺</button><button class="drop" data-a="mark" data-id="${s.id}" data-s="dropped">نزل</button>`;
+        else act = `<button data-a="mark" data-id="${s.id}" data-s="${b === "absent" ? "pending" : "boarded"}">↺ تراجع</button>`;
+      }
+      return `<div class="stu ${b === "boarded" ? "boarded" : ""}"><span class="av">${initials(s.name)}</span><div class="nm"><b>${s.name}</b><span class="badge ${attTone[b]}">${attLbl[b]}</span>${s.boardedAt && b === "boarded" ? ` <span class="muted">${hm(s.boardedAt)}</span>` : ""}</div><div class="act">${act}</div></div>`;
+    }).join("");
+    return `<div class="stop-h">📍 ${i + 1}. ${stp.name} <span class="muted">· ${hm(t.start + stp.planned * 60)}</span>${t.servedStops.includes(i) ? `<span class="badge ${stopNow === i ? "brand" : "blue"}">${stopNow === i ? "الباص هنا" : "تم المرور"}</span>` : ""}</div>${rows}`;
+  }).join("");
+  const gps = isDriver ? (active(t) ? `<div class="gps"><span>📡</span><span data-live="gps-strip">مشاركة الموقع مفعّلة · آخر إرسال الآن</span><span style="margin-inline-start:auto">±8م</span></div>` : `<div class="gps off">📡 مشاركة الموقع متوقفة — تعمل أثناء الرحلة فقط</div>`) : "";
+  let foot = "";
+  if (isDriver && !closed) {
+    if (t.status === "scheduled") foot = `<button class="big go" data-a="modal" data-m="start">▶ بدء الرحلة</button>`;
+    else foot = `${!t.arrivedAt ? `<button class="big out" data-a="modal" data-m="arrive" ${atSchool(t) ? "" : "disabled"}>🏫 وصلنا المدرسة</button>` : ""}<button class="big ${t.arrivedAt ? "go" : "stop"}" data-a="modal" data-m="end">✓ إنهاء الرحلة</button>${!atSchool(t) && !t.arrivedAt ? `<div class="note" data-live="dist-note">زر الوصول يتفعّل عند وصول الباص للمدرسة</div>` : ""}`;
+  } else if (closed) foot = `<div class="note">انتهت الرحلة ${hm(t.completedAt)} — توقفت مشاركة الموقع</div>`;
+  else foot = `<div class="note">بدء الرحلة وإنهاؤها من صلاحيات السائق</div>`;
+
+  return `<div class="phone"><div class="screen">
+    <div class="status-bar"><span>${hm(S.t)}</span><span>5G ▮▮▮</span></div>
+    <div class="app-h"><div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><div><span class="muted">${isDriver ? "السائق" : "المشرفة"}: ${isDriver ? t.driver : t.supervisor}</span><h3>${t.name}</h3><span class="muted">${t.bus} · الانطلاق ${hm(t.start)} · ${st.length} طلاب</span></div>${tripBadge(t)}</div>${gps}
+      ${t.emergency ? `<div class="warnbox" style="margin-top:8px">⚠ حالة طوارئ مفعّلة — الإدارة تتابع</div>` : ""}</div>
+    <div class="app-body">
+      <div class="counts"><div><b>${c("pending")}</b><span>لم يصعد</span></div><div><b style="color:var(--brand)">${c("boarded")}</b><span>في الباص</span></div><div><b style="color:var(--blue)">${c("dropped")}</b><span>نزل</span></div><div><b style="color:var(--red)">${c("absent")}</b><span>غائب</span></div></div>
+      ${groups}
+      ${!closed ? `<div class="mini" style="margin-top:6px"><button data-a="modal" data-m="delay">⏱ تأخير</button><button data-a="modal" data-m="incident">⚠ إبلاغ عن مشكلة</button>${isDriver ? "" : `<button data-a="modal" data-m="contacts">📞 أولياء الأمور</button><button data-a="note">📝 ملاحظة</button>`}</div>` : ""}
+    </div>
+    <div class="app-foot">${foot}</div>
+    ${modalHTML(role)}
+  </div></div>`;
+}
+
+function modalHTML(role) {
+  const m = S.modal; if (!m || m.role !== role) return "";
+  const t = S.trips.T1; const st = tripStudents("T1");
+  const close = `<button class="big" style="background:var(--surface-2)" data-a="close">إلغاء</button>`;
+  let body = "";
+  if (m.kind === "start") body = `<h4>بدء الرحلة؟</h4><p>سيتم تسجيل وقت البداية وتفعيل مشاركة موقعك المباشر حتى نهاية الرحلة، وإشعار أولياء أمور ${st.filter((s) => s.status !== "absent").length} طلاب.</p><button class="big go" data-a="start">ابدأ الرحلة</button>${close}`;
+  else if (m.kind === "arrive") body = `<h4>تأكيد الوصول إلى المدرسة</h4><p>سيتم تسجيل وصول ${st.filter((s) => s.status === "boarded").length} طالب داخل الباص وإشعار أولياء أمورهم. الرحلة تبقى مفتوحة حتى تضغط «إنهاء الرحلة».</p><button class="big go" data-a="arrive">تأكيد الوصول</button>${close}`;
+  else if (m.kind === "end") {
+    const ob = st.filter((s) => s.status === "boarded"), pe = st.filter((s) => s.status === "pending");
+    if (ob.length) body = `<h4>لا يمكن إنهاء الرحلة</h4><div class="warnbox">يوجد ${ob.length} طالب داخل الباص لم يُسجَّل نزوله. تأكد من الباص أولًا:<ul>${ob.map((s) => `<li>${s.name}</li>`).join("")}</ul></div><button class="big" style="background:var(--surface-2)" data-a="close">حسنًا</button>`;
+    else if (pe.length) body = `<h4>إنهاء الرحلة</h4><div class="warnbox amber">طلاب لم تُسجَّل حالتهم (${pe.length}):<ul>${pe.map((s) => `<li>${s.name}</li>`).join("")}</ul>سيتم تسجيلهم غائبين وإشعار أولياء أمورهم.</div><button class="big stop" data-a="end" data-abs="1">تسجيلهم غائبين وإنهاء الرحلة</button>${close}`;
+    else body = `<h4>إنهاء الرحلة</h4><p>سيتم تسجيل وقت النهاية وإيقاف مشاركة الموقع. جميع الطلاب تمت معالجة حالتهم.</p><button class="big go" data-a="end">إنهاء الرحلة</button>${close}`;
+  } else if (m.kind === "delay") body = `<h4>الإبلاغ عن تأخير</h4><p>سيُرسل إشعار لأولياء أمور الطلاب المعنيين.</p><div class="opts">${[5, 10, 15, 20].map((x) => `<button data-a="dmin" data-v="${x}" aria-pressed="${m.min === x}">${x} دقيقة</button>`).join("")}</div>
+      <div class="opts">${["ازدحام مروري", "تأخر طالب عند نقطة الصعود", "إغلاق طريق"].map((x) => `<button data-a="dreason" data-v="${x}" aria-pressed="${m.reason === x}">${x}</button>`).join("")}</div><button class="big go" data-a="delay" ${m.min && m.reason ? "" : "disabled"}>إرسال</button>${close}`;
+  else if (m.kind === "incident") body = `<h4>إبلاغ الإدارة عن مشكلة</h4><div class="opts">${["عطل بسيط في التكييف", "حالة صحية لطالب", "عطل في المكابح (طارئ)"].map((x) => `<button data-a="itext" data-v="${x}" aria-pressed="${m.text === x}">${x}</button>`).join("")}</div><p>البلاغ الطارئ يفعّل حالة الطوارئ ويُشعر الإدارة وأولياء أمور الطلاب داخل الباص.</p><button class="big ${m.text && m.text.includes("طارئ") ? "stop" : "go"}" data-a="incident" ${m.text ? "" : "disabled"}>إرسال البلاغ</button>${close}`;
+  else if (m.kind === "contacts") body = `<h4>التواصل مع أولياء الأمور</h4><p>يظهر للمشرف فقط؛ السائق لا يرى الأرقام حتى لا يتصل أثناء القيادة.</p>${[["محمد وسارة", "عبدالله الحربي (الأب)", "055 123 4567"], ["يوسف", "منيرة الزهراني (الأم)", "055 987 6543"], ["ريان ولمى", "سلطان المطيري (الأب)", "055 333 2211"]].map(([k, n, p]) => `<div class="stu"><div class="nm"><b>${k}</b><span class="muted">${n}</span></div><span dir="ltr" style="font-weight:600">${p}</span></div>`).join("")}${close}`;
+  return `<div class="modal" role="dialog" aria-modal="true"><div class="sheet">${body}</div></div>`;
+}
+
+// ---------------------------------------------------------------------------
+// Parent phone
+// ---------------------------------------------------------------------------
+function childStatus(s) {
+  const t = S.trips[s.trip]; const f = first(s.name);
+  if (t.emergency && s.status === "boarded") return ["red", "تنبيه: مشكلة أثناء الرحلة", "المدرسة تتابع الوضع الآن"];
+  if (s.status === "boarded") return [t.delay ? "amber" : "brand", `${f} في الباص الآن`, `صعد ${hm(s.boardedAt)}${t.delay ? ` · الرحلة متأخرة ${t.delay} دقيقة` : ""}`];
+  if (s.status === "dropped") return ["blue", s.place === "school" ? `وصل ${f} إلى المدرسة بسلام` : `نزل ${f} من الباص`, hm(s.droppedAt)];
+  if (s.status === "absent") return ["", `تم تسجيل ${f} غائبًا عن الرحلة الصباحية`, ""];
+  if (t.status === "scheduled") return ["", `الرحلة الصباحية تبدأ ${hm(t.start)}`, `الموعد المتوقع عند ${t.stops[s.stop].name}: ${hm(t.start + t.stops[s.stop].planned * 60)}`];
+  if (t.status === "completed") return ["", "انتهت الرحلة الصباحية", ""];
+  return [t.delay ? "amber" : "brand", `الباص في الطريق إلى ${f}`, t.delay ? `متأخرة حوالي ${t.delay} دقيقة: ${t.delayReason}` : `الموعد المتوقع: ${hm(t.start + t.stops[s.stop].planned * 60)}`];
+}
+function tracking(s) {
+  const t = S.trips[s.trip];
+  if (!active(t)) return { ok: false, why: t.status === "completed" ? "انتهت الرحلة وتوقف التتبع." : "تظهر الخريطة عند صعود ابنك إلى الباص." };
+  if (s.status !== "boarded") return { ok: false, why: s.status === "dropped" ? "انتهى التتبع بعد نزول ابنك من الباص." : s.status === "absent" ? "تم تسجيل الغياب، لذلك لا يتوفر تتبع." : "تظهر الخريطة عند صعود ابنك إلى الباص." };
+  const rem = totalLen(t) - t.dist; const km = rem * KM_PER_U;
+  return { ok: true, km, eta: Math.max(1, Math.ceil((rem / SPEED_U + t.dwell) / 60 * 1.1)) };
+}
+function parentHTML() {
+  const ks = kids(); const s = ks.find((k) => k.id === S.parentChild) || ks[0];
+  const t = S.trips[s.trip];
+  const [tn, h1, h2] = childStatus(s);
+  const tr = tracking(s);
+  const my = S.notifs.filter((n) => n.parent === "p1");
+  const unread = my.filter((n) => !n.read).length;
+  let body = "";
+  if (S.parentTab === "home") {
+    const mapCard = tr.ok
+      ? `<div class="card" style="padding:0;overflow:hidden"><div class="map" data-map="parent">${mapSVG({ trips: [s.trip], focusTrip: s.trip, path: true })}</div>
+          <div class="eta"><div><span>الوصول المتوقع</span><b data-live="eta">~${tr.eta} د</b></div><div><span>المسافة</span><b data-live="km">${tr.km.toFixed(1)} كم</b></div><div><span>آخر تحديث</span><b>الآن</b></div></div>
+          <div class="note" style="text-align:start;padding:6px 12px">متجه إلى ${SCHOOL.name}. الوقت تقديري حسب المسافة والسرعة. المسار يظهر من لحظة صعود ${first(s.name)} فقط.</div></div>`
+      : `<div class="card locked"><span class="lock-ic">🔒</span><div><b>تتبع الباص</b><div class="muted" style="font-size:13px">${tr.why}</div></div></div>`;
+    body = `<div class="hero ${tn}"><div style="display:flex;gap:10px;align-items:center"><span class="av" style="width:46px;height:46px;background:rgb(255 255 255 / .2);color:#fff">${initials(s.name)}</span><div><b style="font-size:16px">${s.name}</b><div class="s">${s.grade}</div></div></div><div class="t">${h1}</div>${h2 ? `<div class="s">${h2}</div>` : ""}</div>
+      ${mapCard}
+      <div class="card"><h4>تفاصيل الرحلة</h4><dl class="facts"><div><dt>الباص</dt><dd>${t.bus} · ${t.plate}</dd></div><div><dt>الانطلاق</dt><dd>${hm(t.start)}</dd></div><div><dt>السائق</dt><dd>${t.driver}</dd></div><div><dt>المشرفة</dt><dd>${t.supervisor}</dd></div><div><dt>نقطة الصعود</dt><dd>${t.stops[s.stop].name}</dd></div><div><dt>الموعد المتوقع</dt><dd>${hm(t.start + t.stops[s.stop].planned * 60)}</dd></div></dl>
+      <div class="note" style="margin-top:8px">📞 المشرفة: <span dir="ltr">050 333 4455</span></div></div>`;
+  } else if (S.parentTab === "alerts") {
+    body = `<div class="card">${my.length ? my.map((n) => `<div class="notif ${n.read ? "read" : ""}"><span class="dot"></span><div style="flex:1"><div style="display:flex;justify-content:space-between;gap:6px"><b>${n.title}</b><span class="muted">${hm(n.t)}</span></div><p>${esc(n.body)}</p></div></div>`).join("") : `<div class="ok">لا توجد إشعارات بعد. ستصلك عند بدء الرحلة وصعود ابنك ووصوله.</div>`}</div>`;
+  } else {
+    const chat = S.chat.length ? S.chat.map((m) => `<div class="msg ${m.me ? "me" : "bot"}">${esc(m.text)}${m.action ? `<div style="margin-top:6px"><button class="btn primary" data-a="sendreq">تأكيد وإرسال الطلب للمدرسة</button></div>` : ""}</div>`).join("")
+      : `<div class="card"><b>✨ المساعد الذكي</b><div class="muted" style="font-size:13px">اسألني عن رحلة ${first(s.name)} اليوم. أجيب من بيانات النظام فقط.</div></div>`;
+    body = `<div class="chat">${chat}</div><div class="sugg">${["وين الباص الآن؟", `هل ${first(s.name)} وصل المدرسة؟`, "ليش الباص متأخر؟", "متى يوصل الباص؟", "كيف أغير نقطة الصعود؟", "أبغى أتواصل مع المدرسة"].map((q) => `<button data-a="ask" data-q="${q}">${q}</button>`).join("")}</div>
+      <div class="note">في النسخة الفعلية يعمل المساعد بنموذج Claude ويقرأ بيانات النظام بصلاحيات ولي الأمر فقط.</div>`;
+  }
+  return `<div class="phone"><div class="screen">
+    <div class="status-bar"><span>${hm(S.t)}</span><span>5G ▮▮▮</span></div>
+    <div class="app-h"><div style="display:flex;justify-content:space-between"><b>مدارس الرواد الأهلية</b><span class="muted">عبدالله الحربي</span></div>
+      <div class="kids" role="tablist" aria-label="الأبناء">${ks.map((k) => `<button role="tab" aria-selected="${k.id === s.id}" data-a="child" data-id="${k.id}"><span class="av">${initials(k.name)}</span>${first(k.name)}</button>`).join("")}</div></div>
+    <div class="app-body">${body}</div>
+    ${S.parentTab === "assistant" ? `<form class="ask" data-form="ask"><input id="askq" placeholder="اكتب سؤالك…" aria-label="سؤالك" autocomplete="off"><button type="submit" aria-label="إرسال">➤</button></form>` : ""}
+    <nav class="nav">${[["home", "🏠 الرئيسية"], ["alerts", "🔔 الإشعارات"], ["assistant", "✨ المساعد"]].map(([k, l]) => `<button data-a="ptab" data-id="${k}" ${S.parentTab === k ? 'aria-current="page"' : ""}>${l}${k === "alerts" && unread ? `<span class="count">${unread}</span>` : ""}</button>`).join("")}</nav>
+  </div></div>`;
+}
+
+// Rule-based stand-in for the Claude assistant, answering ONLY from demo state.
+function answer(q) {
+  const ks = kids(); let s = ks.find((k) => q.includes(first(k.name))) || ks.find((k) => k.id === S.parentChild);
+  const t = S.trips[s.trip]; const f = first(s.name); const tr = tracking(s);
+  if (/وين|موقع|مكان/.test(q)) return tr.ok ? `الباص الآن على بعد ${tr.km.toFixed(1)} كم من المدرسة، والوصول المتوقع حوالي ${tr.eta} دقائق (تقديري). آخر تحديث للموقع قبل لحظات، وتقدر تتابعه على الخريطة في الرئيسية.` : `لا أستطيع عرض موقع الباص الآن. ${tr.why}`;
+  if (/وصل/.test(q)) return s.status === "dropped" && s.place === "school" ? `نعم، وصل ${f} إلى المدرسة بسلام الساعة ${hm(s.droppedAt)}.` : s.status === "boarded" ? `ليس بعد. ${f} في الباص منذ ${hm(s.boardedAt)}${tr.ok ? `، والوصول المتوقع حوالي ${tr.eta} دقائق` : ""}.` : s.status === "absent" ? `تم تسجيل ${f} غائبًا عن رحلة اليوم الصباحية.` : `لم يصعد ${f} إلى الباص بعد. الرحلة ${t.status === "scheduled" ? `تبدأ ${hm(t.start)}` : "بدأت والباص في الطريق"}.`;
+  if (/متأخر|تأخير|ليش/.test(q)) return t.delay ? `نعم، سجّل السائق تأخيرًا حوالي ${t.delay} دقيقة. السبب: ${t.delayReason}.` : t.status === "scheduled" && S.t > t.start ? `الرحلة لم تبدأ بعد وموعدها كان ${hm(t.start)}. لا يوجد سبب تأخير مسجل في النظام حتى الآن، وتقدر تتواصل مع المشرفة نورة الدوسري.` : `لا يوجد تأخير مسجل في النظام لرحلة ${f} اليوم.`;
+  if (/متى|كم باقي|يوصل/.test(q)) return tr.ok ? `الوصول المتوقع إلى المدرسة حوالي ${tr.eta} دقائق، وهو تقدير حسب المسافة الحالية والسرعة.` : s.status === "pending" ? `الموعد المخطط للباص عند ${t.stops[s.stop].name} هو ${hm(t.start + t.stops[s.stop].planned * 60)}. سأعطيك وقتًا أدق بعد صعود ${f}.` : `لا يتوفر وقت وصول متوقع الآن. ${tr.why}`;
+  if (/نقطة|أغير|اغير|تغيير/.test(q)) return { text: `تغيير نقطة الصعود يتم بموافقة الإدارة. أقدر أرسل لهم الطلب التالي:\n«طلب تغيير نقطة صعود ${f} من ${t.stops[s.stop].name} إلى موقع جديد يحدده ولي الأمر.»\nهل أرسله؟`, action: { kind: "تغيير نقطة الصعود", child: s.name } };
+  if (/تواصل|اتصل|المدرسة|المشرف/.test(q)) return `تقدر تتواصل مع المشرفة نورة الدوسري على الرقم 050 333 4455، أو أرسل طلب تواصل للإدارة من قسم الطلبات وستصلك الإجابة كإشعار.`;
+  return `أقدر أساعدك في: موقع الباص، هل وصل ${f} المدرسة، سبب التأخير، وقت الوصول المتوقع، تغيير نقطة الصعود، والتواصل مع المدرسة.`;
+}
+function ask(q) {
+  q = q.trim(); if (!q) return;
+  S.chat.push({ me: true, text: q });
+  const a = answer(q);
+  if (typeof a === "string") S.chat.push({ text: a }); else { S.chat.push({ text: a.text, action: a.action }); S.pendingAction = a.action; }
+  render();
+}
+
+// ---------------------------------------------------------------------------
+// Rendering
+// ---------------------------------------------------------------------------
+function render() {
+  $("#clock").textContent = hm(S.t);
+  $("#tabs").innerHTML = VIEWS.map(([k, l]) => `<button role="tab" aria-selected="${S.view === k}" data-a="view" data-id="${k}">${l}</button>`).join("");
+  $("#speed").innerHTML = [1, 3, 10].map((x) => `<button aria-pressed="${S.speed === x}" data-a="speed" data-v="${x}">${x}×</button>`).join("");
+  $("#pause").textContent = S.paused ? "متابعة" : "إيقاف مؤقت";
+  $("#auto").textContent = S.auto ? "السيناريو التلقائي يعمل" : "تشغيل السيناريو تلقائيًا";
+  $("#intro").innerHTML = INTRO[S.view];
+  const keepInput = document.activeElement && document.activeElement.id === "askq" ? document.activeElement.value : null;
+  let html = "";
+  if (S.view === "all") html = `<div class="grid"><div class="slot-admin"><div class="slot-label"><span>لوحة إدارة المدرسة</span></div>${adminHTML(false)}</div>
+      <div class="slot-driver"><div class="slot-label"><span>جوال السائق</span><span>${S.trips.T1.bus}</span></div>${staffHTML("driver")}</div>
+      <div class="slot-parent"><div class="slot-label"><span>جوال ولي الأمر</span><span>عبدالله الحربي</span></div>${parentHTML()}</div></div>`;
+  else if (S.view === "admin") html = `<div class="single">${adminHTML(true)}</div>`;
+  else if (S.view === "driver") html = `<div class="single phone-only">${staffHTML("driver")}</div>`;
+  else if (S.view === "supervisor") html = `<div class="single phone-only">${staffHTML("supervisor")}</div>`;
+  else html = `<div class="single phone-only">${parentHTML()}</div>`;
+  const scrolls = [...document.querySelectorAll(".app-body")].map((e) => e.scrollTop);
+  $("#app").innerHTML = html;
+  document.querySelectorAll(".app-body").forEach((e, i) => { e.scrollTop = scrolls[i] || 0; });
+  if (keepInput !== null) { const i = $("#askq"); if (i) { i.value = keepInput; i.focus(); } }
+}
+function live() {
+  $("#clock").textContent = hm(S.t);
+  document.querySelectorAll('[data-map="admin"] svg').forEach((el) => el.outerHTML = mapSVG({ trips: Object.keys(S.trips), focusTrip: S.selectedBus, path: !!S.selectedBus, stops: true, selected: S.selectedBus }));
+  const k = kids().find((x) => x.id === S.parentChild);
+  document.querySelectorAll('[data-map="parent"] svg').forEach((el) => el.outerHTML = mapSVG({ trips: [k.trip], focusTrip: k.trip, path: true }));
+  const tr = tracking(k);
+  if (tr.ok) { document.querySelectorAll('[data-live="eta"]').forEach((e) => e.textContent = `~${tr.eta} د`); document.querySelectorAll('[data-live="km"]').forEach((e) => e.textContent = `${tr.km.toFixed(1)} كم`); }
+  document.querySelectorAll(".status-bar span:first-child").forEach((e) => e.textContent = hm(S.t));
+  const t1 = S.trips.T1;
+  if (active(t1) && !t1.arrivedAt && atSchool(t1) && !S.arrivalShown) { S.arrivalShown = true; render(); }   // enable the arrival button once
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
+function roleOfEvent(el) { return el.closest(".slot-parent") ? "parent" : (S.view === "supervisor" ? "supervisor" : "driver"); }
+document.addEventListener("pointerdown", (e) => { const g = e.target.closest("[data-bus]"); if (g) { S.selectedBus = g.dataset.bus; render(); } });
+document.addEventListener("click", (e) => {
+  const b = e.target.closest("[data-a]"); if (!b || b.disabled) return;
+  const a = b.dataset.a; const role = roleOfEvent(b);
+  const by = role === "supervisor" ? "المشرفة" : "السائق";
+  switch (a) {
+    case "view": S.view = b.dataset.id; S.modal = null; break;
+    case "speed": S.speed = +b.dataset.v; break;
+    case "mark": mark(b.dataset.id, b.dataset.s, by); return;
+    case "modal": S.modal = { kind: b.dataset.m, role }; break;
+    case "close": S.modal = null; break;
+    case "start": S.modal = null; startTrip("T1", by); toast("بدأت الرحلة — تم تفعيل مشاركة الموقع"); return;
+    case "arrive": arrive("T1", by); toast("تم تسجيل الوصول إلى المدرسة"); return;
+    case "end": endTrip("T1", b.dataset.abs === "1", by); toast("انتهت الرحلة — تم إيقاف مشاركة الموقع"); return;
+    case "dmin": S.modal.min = +b.dataset.v; break;
+    case "dreason": S.modal.reason = b.dataset.v; break;
+    case "delay": reportDelay("T1", S.modal.min, S.modal.reason, by); toast("تم إبلاغ أولياء الأمور بالتأخير"); return;
+    case "itext": S.modal.text = b.dataset.v; break;
+    case "incident": reportIncident("T1", S.modal.text.includes("طارئ"), S.modal.text, by); return;
+    case "note": log(S.trips.T1, "ملاحظة: ازدحام عند دوار النرجس", "المشرفة"); toast("تم حفظ الملاحظة في سجل الرحلة"); break;
+    case "child": S.parentChild = b.dataset.id; break;
+    case "ptab": S.parentTab = b.dataset.id; if (S.parentTab === "alerts") setTimeout(() => { S.notifs.forEach((n) => { if (n.parent === "p1") n.read = true; }); }, 1500); break;
+    case "ask": ask(b.dataset.q); return;
+    case "sendreq": if (S.pendingAction) { S.requests.unshift({ ...S.pendingAction, text: "طلب تغيير نقطة الصعود عبر المساعد الذكي", t: S.t }); S.chat.push({ text: "تم إرسال طلبك للمدرسة ✓ وسيظهر رد الإدارة كإشعار. (يظهر الطلب الآن في لوحة الإدارة)" }); S.chat.forEach((m) => delete m.action); S.pendingAction = null; } break;
+    case "selbus": S.selectedBus = b.dataset.id; break;
+    case "closecard": S.selectedBus = null; break;
+  }
+  render();
+});
+document.addEventListener("submit", (e) => { const f = e.target.closest("[data-form='ask']"); if (!f) return; e.preventDefault(); const i = $("#askq"); const q = i.value; i.value = ""; ask(q); });
+$("#pause").addEventListener("click", () => { S.paused = !S.paused; render(); });
+$("#auto").addEventListener("click", () => { S.auto = !S.auto; if (S.auto && S.speed < 3) S.speed = 3; if (S.auto && S.trips.T1.status === "scheduled") S.t = Math.max(S.t, S.trips.T1.start - 20); if (S.auto) toast("السيناريو التلقائي: السائق والمشرفة ينفذان الرحلة كاملة"); render(); });
+$("#reset").addEventListener("click", () => { const v = S.view; S = freshState(); S.view = v; render(); toast("أُعيد بدء المحاكاة من 6:12 صباحًا"); });
+
+render();
+requestAnimationFrame((n) => { last = n; requestAnimationFrame(loop); });
+</script>
+
+</body>
+</html>
