@@ -1,0 +1,30 @@
+@import "@fontsource/ibm-plex-sans-arabic/400.css";
+@import "@fontsource/ibm-plex-sans-arabic/500.css";
+@import "@fontsource/ibm-plex-sans-arabic/600.css";
+@import "@fontsource/ibm-plex-sans-arabic/700.css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Overridden per school (branding) via inline style on <body>. */
+  --brand-rgb: 14 159 110;
+}
+
+html { -webkit-tap-highlight-color: transparent; }
+body {
+  @apply bg-surface text-ink antialiased;
+  font-feature-settings: "tnum" 1;
+}
+
+@keyframes toast-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* MapLibre controls should follow RTL page but keep map LTR internally. */
+.maplibregl-map { direction: ltr; font-family: inherit; }
+.maplibregl-popup-content { direction: rtl; border-radius: 0.875rem; padding: 0; box-shadow: 0 10px 30px -10px rgb(15 23 42 / .3); }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}

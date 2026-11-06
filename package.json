@@ -1,0 +1,12 @@
+{
+  "name": "busna",
+  "private": true,
+  "packageManager": "pnpm@10.28.0",
+  "scripts": {
+    "dev": "pnpm --filter @busna/web dev",
+    "build": "pnpm --filter @busna/web build",
+    "lint": "pnpm --filter @busna/web lint",
+    "typecheck": "pnpm --filter @busna/web typecheck",
+    "test:db": "supabase/tests/run.sh"
+  }
+}

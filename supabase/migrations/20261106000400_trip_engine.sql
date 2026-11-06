@@ -243,10 +243,13 @@ end $$;
 -- ---------------------------------------------------------------------
 -- Attendance (driver or supervisor)
 -- ---------------------------------------------------------------------
+-- p_at: device time of the tap (offline replay). Bounded to the last 12h and
+-- never in the future; defaults to server time.
 create or replace function public.record_attendance(p_trip_student uuid, p_status public.attendance_status,
-  p_lat double precision default null, p_lng double precision default null)
+  p_lat double precision default null, p_lng double precision default null, p_at timestamptz default null)
 returns public.trip_students language plpgsql security definer set search_path = '' as $$
 declare
+  v_at timestamptz := case when p_at is null or p_at > now() or p_at < now() - interval '12 hours' then now() else p_at end;
   v_trip_id uuid;
   t public.trips;
   v_role text;
@@ -286,7 +289,7 @@ begin
   end if;
 
   if p_status = 'boarded' then
-    update public.trip_students set status = 'boarded', boarded_at = now(), boarded_lat = p_lat, boarded_lng = p_lng,
+    update public.trip_students set status = 'boarded', boarded_at = v_at, boarded_lat = p_lat, boarded_lng = p_lng,
            boarded_by = auth.uid(), dropped_at = null, dropped_lat = null, dropped_lng = null, dropped_by = null,
            drop_place = null, absent_at = null, absent_by = null
      where id = ts.id returning * into ts;
@@ -302,7 +305,7 @@ begin
       when t.arrived_at is not null
         or coalesce(public.distance_m(p_lat, p_lng, t.end_lat, t.end_lng), 1e9) < 300 then 'school'
       else 'stop' end;
-    update public.trip_students set status = 'dropped', dropped_at = now(), dropped_lat = p_lat, dropped_lng = p_lng,
+    update public.trip_students set status = 'dropped', dropped_at = v_at, dropped_lat = p_lat, dropped_lng = p_lng,
            dropped_by = auth.uid(), drop_place = v_place
      where id = ts.id returning * into ts;
     if v_place = 'school' then
@@ -317,7 +320,7 @@ begin
     end if;
 
   elsif p_status = 'absent' then
-    update public.trip_students set status = 'absent', absent_at = now(), absent_by = auth.uid(),
+    update public.trip_students set status = 'absent', absent_at = v_at, absent_by = auth.uid(),
            boarded_at = null, boarded_lat = null, boarded_lng = null, boarded_by = null
      where id = ts.id returning * into ts;
     perform private.notify_student(t, ts.student_id, 'student_absent', 'تسجيل غياب',
@@ -330,7 +333,7 @@ begin
   end if;
 
   perform private.log_event(t, 'attendance_' || p_status::text, v_role, ts.student_id, p_lat, p_lng,
-                            jsonb_build_object('student_name', v_name, 'drop_place', ts.drop_place));
+                            jsonb_build_object('student_name', v_name, 'drop_place', ts.drop_place, 'recorded_at', v_at));
   return ts;
 end $$;
 
@@ -718,7 +721,7 @@ revoke execute on all functions in schema public from public, anon;
 grant execute on function
   public.generate_trips(uuid, date),
   public.start_trip(uuid, double precision, double precision),
-  public.record_attendance(uuid, public.attendance_status, double precision, double precision),
+  public.record_attendance(uuid, public.attendance_status, double precision, double precision, timestamptz),
   public.arrive_trip(uuid, double precision, double precision),
   public.end_trip(uuid, double precision, double precision, boolean),
   public.push_locations(uuid, jsonb),
