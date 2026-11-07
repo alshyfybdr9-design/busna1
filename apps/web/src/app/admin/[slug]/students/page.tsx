@@ -1,7 +1,7 @@
 "use client";
 import { useMemo, useState } from "react";
 import {
-  AlertTriangle, ArrowLeftRight, Download, FileSpreadsheet, History, MoreHorizontal, Pencil, Plus, Search, Trash2, Upload, Users,
+  AlertTriangle, ArrowLeftRight, Download, FileSpreadsheet, History, MoreHorizontal, Pencil, Plus, Printer, QrCode, Search, Trash2, Upload, Users,
 } from "lucide-react";
 import { supabaseBrowser } from "@/lib/supabase/client";
 import { must, useQuery } from "@/lib/use-query";
@@ -11,6 +11,7 @@ import { attendanceLabel, attendanceTone, fmtDate, fmtDateTime, fmtPhone, fmtTim
 import type { AttendanceStatus, Guardian, Notification, Student, TransportStatus, TripPeriod } from "@/lib/types";
 import { useSchool } from "@/components/admin/school-context";
 import { PageHeader } from "@/components/admin/shell";
+import { StudentCardsDialog } from "@/components/admin/student-card";
 import { useLookups } from "@/components/admin/lookups";
 import { Table, Td, Toolbar } from "@/components/admin/table";
 import { BusMap } from "@/components/map/bus-map";
@@ -44,6 +45,7 @@ export default function StudentsPage() {
   const [history, setHistory] = useState<Row | null>(null);
   const [del, setDel] = useState<Row | null>(null);
   const [importing, setImporting] = useState(false);
+  const [cards, setCards] = useState<Row[] | null>(null);
   const [menu, setMenu] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -107,6 +109,7 @@ export default function StudentsPage() {
             <option value="">كل الحالات</option>{Object.entries(statusLabel).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
           </Select>
           <Button variant="ghost" onClick={exportList} disabled={!filtered.length}><Download className="size-4" />تصدير</Button>
+          <Button variant="ghost" onClick={() => setCards(filtered)} disabled={!filtered.length} title="بطاقات الطلاب الظاهرين في القائمة"><Printer className="size-4" />طباعة البطاقات</Button>
         </Toolbar>
 
         {q.loading && !q.data ? <PageLoading /> : q.error ? <ErrorState message={q.error.message} onRetry={() => q.reload()} /> :
@@ -114,7 +117,7 @@ export default function StudentsPage() {
             <EmptyState icon={Users} title="لا يوجد طلاب بعد" body="أضف الطلاب يدويًا أو استوردهم دفعة واحدة من ملف Excel."
               action={canEdit && <div className="flex gap-2"><Button variant="secondary" onClick={() => setImporting(true)}><Upload className="size-4" />استيراد</Button><Button onClick={() => setEditing("new")}><Plus className="size-4" />إضافة طالب</Button></div>} />
           ) : filtered.length === 0 ? <p className="py-10 text-center text-sm text-ink-muted">لا توجد نتائج مطابقة</p> : (
-            <Table head={["الطالب", "الصف", "الباص", "ولي الأمر", "نقطة الصعود", "الاشتراك", ""]}>
+            <Table head={["الطالب", "الصف", "الباص", "ولي الأمر", "جوال ولي الأمر", "نقطة الصعود", "الاشتراك", ""]}>
               {filtered.map((r) => {
                 const b = lk.data?.busById.get(r.bus_id ?? "");
                 const over = b && (loadByBus.get(b.id) ?? 0) > b.capacity;
@@ -131,14 +134,22 @@ export default function StudentsPage() {
                     <Td>
                       {r.guardians.length === 0 ? <span className="text-xs text-amber-700">بدون ولي أمر</span> : r.guardians.map((g) => (
                         <span key={g.guardian.id} className="block text-xs">
-                          {g.guardian.full_name} <span dir="ltr" className="text-ink-soft">{fmtPhone(g.guardian.phone)}</span>
-                          {!g.guardian.user_id && <span className="text-ink-soft"> · لم يفعّل التطبيق</span>}
+                          {g.guardian.full_name} <span className="text-ink-soft">({g.relation})</span>
+                          {!g.guardian.user_id && <span className="block text-ink-soft">لم يفعّل التطبيق</span>}
                         </span>
+                      ))}
+                    </Td>
+                    <Td>
+                      {r.guardians.length === 0 ? <span className="text-ink-soft">—</span> : r.guardians.map((g) => (
+                        <a key={g.guardian.id} href={`tel:${g.guardian.phone}`} dir="ltr" className="block text-xs hover:text-brand-700" style={{ textAlign: "right" }}>
+                          {fmtPhone(g.guardian.phone)}
+                        </a>
                       ))}
                     </Td>
                     <Td className="text-xs">{r.pickup_label ?? "—"}{r.pickup_lat == null && <span className="block text-amber-700">بدون موقع</span>}</Td>
                     <Td><Badge tone={statusLabel[r.transport_status][1]}>{statusLabel[r.transport_status][0]}</Badge></Td>
-                    <Td className="relative">
+                    <Td className="relative whitespace-nowrap">
+                      <button onClick={() => setCards([r])} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label={`بطاقة ${r.full_name}`} title="بطاقة الطالب (QR)"><QrCode className="size-5" /></button>
                       {canEdit && (
                         <>
                           <button onClick={() => setMenu(menu === r.id ? null : r.id)} className="rounded-lg p-1.5 hover:bg-slate-100" aria-label="إجراءات" aria-expanded={menu === r.id}><MoreHorizontal className="size-5" /></button>
@@ -166,6 +177,8 @@ export default function StudentsPage() {
       {editing && <StudentDialog student={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={() => { setEditing(null); q.reload(true); }} lk={lk.data} />}
       {transfer && <TransferDialog student={transfer} lk={lk.data} load={loadByBus} onClose={() => setTransfer(null)} onDone={() => { setTransfer(null); q.reload(true); }} />}
       {history && <HistoryDialog student={history} onClose={() => setHistory(null)} />}
+      {cards && <StudentCardsDialog students={cards} school={school} busById={lk.data?.busById} canEdit={canEdit}
+        onClose={() => setCards(null)} onReissued={() => q.reload(true)} />}
       {importing && <ImportDialog onClose={() => setImporting(false)} onDone={() => { setImporting(false); q.reload(true); }} />}
       <ConfirmDialog open={!!del} onClose={() => setDel(null)} onConfirm={remove} loading={busy} tone="danger" confirmLabel="حذف نهائي"
         title={`حذف ${del?.full_name ?? ""}؟`}

@@ -87,6 +87,8 @@ export interface Student {
   bus_id: string | null;
   transport_status: TransportStatus;
   notes: string | null;
+  /** Opaque token printed as the card's QR (see lib/student-qr.ts). */
+  qr_token: string;
 }
 
 export interface Route {

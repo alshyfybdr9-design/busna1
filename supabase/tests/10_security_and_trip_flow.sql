@@ -495,4 +495,60 @@ select tests.login(:owner_a); set role authenticated;
 select tests.expect_error('select private.generate_trips_all_schools()', '42501');
 reset role;
 
+\echo '▶ student QR cards: re-issue is admin-only, scanning stays inside the school'
+create function tests.qr(p_student uuid) returns text language sql stable security definer set search_path = '' as $$
+  select qr_token from public.students where id = p_student
+$$;
+create function tests.qr_by_number(p_number text) returns text language sql stable security definer set search_path = '' as $$
+  select qr_token from public.students where student_number = p_number
+$$;
+grant execute on function tests.qr(uuid), tests.qr_by_number(text) to authenticated;
+do $$ begin
+  assert (select count(*) from public.students where qr_token !~ '^[0-9a-f]{24}$') = 0, 'every student has a token';
+  assert (select count(distinct qr_token) from public.students) = (select count(*) from public.students), 'tokens are unique';
+end $$;
+
+select tests.login(:owner_a); set role authenticated;
+do $$ declare old text := tests.qr('a4000000-0000-4000-8000-000000000001'); v text; begin
+  v := public.regenerate_student_qr('a4000000-0000-4000-8000-000000000001');
+  assert v ~ '^[0-9a-f]{24}$' and v <> old, 'new token issued';
+  assert tests.qr('a4000000-0000-4000-8000-000000000001') = v;
+  perform set_config('tests.old_qr', old, false);
+end $$;
+select tests.expect_error($q$select public.regenerate_student_qr('b4000000-0000-4000-8000-000000000001')$q$, 'not_found');
+reset role;
+select tests.login(:viewer_a); set role authenticated;
+select tests.expect_error($q$select public.regenerate_student_qr('a4000000-0000-4000-8000-000000000001')$q$, 'not_found');
+reset role;
+
+-- route 3's trip is active (driver2); driver1 is not assigned to it
+select tests.login(:driver1); set role authenticated;
+select tests.expect_error(format('select public.record_attendance_by_qr(%L, %L, ''boarded'')',
+  tests.trip('a5000000-0000-4000-8000-000000000003'), 'busna:s1:' || tests.qr('a4000000-0000-4000-8000-000000000007')), 'not_assigned');
+reset role;
+
+select tests.login(:driver2); set role authenticated;
+-- garbage, another school's card, a student who is not on this trip, a re-issued (old) card
+select tests.expect_error(format('select public.record_attendance_by_qr(%L, %L, ''boarded'')',
+  tests.trip('a5000000-0000-4000-8000-000000000003'), 'hello'), 'invalid_qr');
+select tests.expect_error(format('select public.record_attendance_by_qr(%L, %L, ''boarded'')',
+  tests.trip('a5000000-0000-4000-8000-000000000003'), 'busna:s1:' || tests.qr('b4000000-0000-4000-8000-000000000001')), 'invalid_qr');
+select tests.expect_error(format('select public.record_attendance_by_qr(%L, %L, ''boarded'')',
+  tests.trip('a5000000-0000-4000-8000-000000000003'), tests.qr_by_number('25001')), 'student_not_on_trip');
+select tests.expect_error(format('select public.record_attendance_by_qr(%L, %L, ''boarded'')',
+  tests.trip('a5000000-0000-4000-8000-000000000003'), 'busna:s1:' || current_setting('tests.old_qr')), 'invalid_qr');
+-- a valid card boards the right student; a repeated scan is idempotent
+do $$ declare ts public.trip_students; begin
+  ts := public.record_attendance_by_qr(tests.trip('a5000000-0000-4000-8000-000000000003'),
+          'busna:s1:' || tests.qr('a4000000-0000-4000-8000-000000000007'), 'boarded', 24.82, 46.62);
+  assert ts.status = 'boarded' and ts.student_id = 'a4000000-0000-4000-8000-000000000007', 'scan recorded on the right student';
+  ts := public.record_attendance_by_qr(tests.trip('a5000000-0000-4000-8000-000000000003'),
+          'BUSNA:S1:' || tests.qr('a4000000-0000-4000-8000-000000000007'), 'boarded');
+  assert ts.status = 'boarded', 'repeat scan is a no-op';
+end $$;
+reset role;
+do $$ begin
+  assert tests.count_notifications('student_boarded', 'a4000000-0000-4000-8000-000000000007') >= 1, 'parent notified by the scan';
+end $$;
+
 \echo '✔ all Busna database tests passed'

@@ -25,6 +25,16 @@ body {
 .maplibregl-map { direction: ltr; font-family: inherit; }
 .maplibregl-popup-content { direction: rtl; border-radius: 0.875rem; padding: 0; box-shadow: 0 10px 30px -10px rgb(15 23 42 / .3); }
 
+/* Student cards: the sheet is mounted only while the cards dialog is open.
+   When it exists, printing shows the cards alone (2 per row on A4). */
+.print-sheet { display: none; }
+@media print {
+  body:has(> .print-sheet) > *:not(.print-sheet) { display: none !important; }
+  body:has(> .print-sheet) { background: #fff; }
+  .print-sheet { display: grid; grid-template-columns: repeat(2, 85.6mm); gap: 5mm; justify-content: center; }
+  .print-sheet .student-card { break-inside: avoid; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
