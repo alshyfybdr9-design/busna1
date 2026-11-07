@@ -39,6 +39,7 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [grade, setGrade] = useState("");
   const [bus, setBus] = useState("");
+  const [inst, setInst] = useState("");
   const [status, setStatus] = useState<"" | TransportStatus>("");
   const [editing, setEditing] = useState<Row | "new" | null>(null);
   const [transfer, setTransfer] = useState<Row | null>(null);
@@ -58,7 +59,7 @@ export default function StudentsPage() {
   }, [rows]);
   const filtered = rows.filter((r) =>
     (!search || r.full_name.includes(search) || r.student_number.includes(search) || r.guardians.some((g) => g.guardian.phone.includes(search.replace(/^0/, "")))) &&
-    (!grade || r.grade === grade) && (!bus || (bus === "none" ? !r.bus_id : r.bus_id === bus)) && (!status || r.transport_status === status));
+    (!grade || r.grade === grade) && (!inst || r.institution_id === inst) && (!bus || (bus === "none" ? !r.bus_id : r.bus_id === bus)) && (!status || r.transport_status === status));
 
   async function setTransport(r: Row, s: TransportStatus) {
     const { error } = await sb.from("students").update({ transport_status: s }).eq("id", r.id);
@@ -80,7 +81,9 @@ export default function StudentsPage() {
 
   function exportList() {
     void exportXlsx(filtered.map((r) => ({
-      "الرقم المدرسي": r.student_number, "اسم الطالب": r.full_name, "الصف": r.grade ?? "", "الفصل": r.section ?? "",
+      "الرقم المدرسي": r.student_number, "اسم الطالب": r.full_name,
+      ...(lk.data?.multiInstitution ? { "الجهة": lk.data.institutionById.get(r.institution_id)?.name ?? "" } : {}),
+      "الصف": r.grade ?? "", "الفصل": r.section ?? "",
       "الباص": lk.data?.busById.get(r.bus_id ?? "")?.code ?? "", "نقطة الصعود": r.pickup_label ?? "",
       "ولي الأمر": r.guardians.map((g) => g.guardian.full_name).join("، "), "الجوال": r.guardians.map((g) => fmtPhone(g.guardian.phone)).join("، "),
       "حالة الاشتراك": statusLabel[r.transport_status][0],
@@ -100,6 +103,11 @@ export default function StudentsPage() {
             <Search className="pointer-events-none absolute start-3 top-2.5 size-4 text-ink-soft" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="بحث بالاسم أو الرقم المدرسي أو الجوال" className="ps-9" />
           </div>
+          {lk.data?.multiInstitution && (
+            <Select value={inst} onChange={(e) => setInst(e.target.value)} className="w-auto" aria-label="الجهة">
+              <option value="">كل الجهات</option>{lk.data.institutions.map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          )}
           <Select value={grade} onChange={(e) => setGrade(e.target.value)} className="w-auto" aria-label="الصف"><option value="">كل الصفوف</option>{grades.map((g) => <option key={g}>{g}</option>)}</Select>
           <Select value={bus} onChange={(e) => setBus(e.target.value)} className="w-auto" aria-label="الباص">
             <option value="">كل الباصات</option><option value="none">بدون باص</option>
@@ -126,7 +134,7 @@ export default function StudentsPage() {
                     <Td>
                       <button onClick={() => setHistory(r)} className="text-start">
                         <span className="block font-medium hover:text-brand-700">{r.full_name}</span>
-                        <span className="text-xs text-ink-soft">#{r.student_number}</span>
+                        <span className="text-xs text-ink-soft">#{r.student_number}{lk.data?.multiInstitution && ` · ${lk.data.institutionById.get(r.institution_id)?.name ?? ""}`}</span>
                       </button>
                     </Td>
                     <Td className="text-ink-muted">{[r.grade, r.section].filter(Boolean).join(" / ") || "—"}</Td>
@@ -206,6 +214,7 @@ function StudentDialog({ student, onClose, onSaved, lk }: {
     section: student?.section ?? "", photo_url: student?.photo_url ?? "", home_address: student?.home_address ?? "",
     pickup_label: student?.pickup_label ?? "", pickup_lat: student?.pickup_lat ?? null as number | null,
     pickup_lng: student?.pickup_lng ?? null as number | null, bus_id: student?.bus_id ?? "", notes: student?.notes ?? "",
+    institution_id: student?.institution_id ?? lk?.institutions.find((i) => i.status === "active")?.id ?? "",
     guardian_name: "", guardian_phone: "", relation: "الأب",
   });
   const [busy, setBusy] = useState(false);
@@ -220,6 +229,8 @@ function StudentDialog({ student, onClose, onSaved, lk }: {
         section: f.section || null, photo_url: f.photo_url || null, home_address: f.home_address || null,
         pickup_label: f.pickup_label || null, pickup_lat: f.pickup_lat, pickup_lng: f.pickup_lng,
         home_lat: f.pickup_lat, home_lng: f.pickup_lng, notes: f.notes || null,
+        // omitted => the database keeps the current one / uses the tenant default
+        ...(f.institution_id ? { institution_id: f.institution_id } : {}),
       };
       let id = student?.id;
       if (student) {
@@ -253,6 +264,13 @@ function StudentDialog({ student, onClose, onSaved, lk }: {
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="الاسم الكامل"><Input value={f.full_name} onChange={(e) => set("full_name", e.target.value)} /></Field>
         <Field label="الرقم المدرسي"><Input value={f.student_number} onChange={(e) => set("student_number", e.target.value)} dir="ltr" /></Field>
+        {lk?.multiInstitution && (
+          <Field label="الجهة" className="sm:col-span-2">
+            <Select value={f.institution_id} onChange={(e) => set("institution_id", e.target.value)}>
+              {lk.institutions.filter((i) => i.status === "active" || i.id === f.institution_id).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+            </Select>
+          </Field>
+        )}
         <Field label="الصف"><Input value={f.grade} onChange={(e) => set("grade", e.target.value)} placeholder="الثالث الابتدائي" /></Field>
         <Field label="الفصل"><Input value={f.section} onChange={(e) => set("section", e.target.value)} /></Field>
         <Field label="الباص المخصص">

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assistantAvailable, assistantErrorMessage, ChatBody, obj, runAssistant, type AssistantTool } from "@/lib/assistant/engine";
+import { assistantAvailable, assistantErrorMessage, ChatBody, checkRateLimit, obj, runAssistant, type AssistantTool } from "@/lib/assistant/engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -28,6 +28,8 @@ export async function POST(req: Request) {
   // RLS would also restrict every query below).
   const { data: member } = await sb.from("school_members").select("role").eq("school_id", schoolId).eq("user_id", user.id).maybeSingle();
   if (!member) return NextResponse.json({ error: "غير مصرح" }, { status: 403 });
+  const limited = await checkRateLimit(sb, "assistant_school");
+  if (limited) return NextResponse.json({ error: limited.error }, { status: limited.status, headers: { "Retry-After": String(limited.retryAfter) } });
   const { data: school } = await sb.from("schools").select("name, timezone, settings").eq("id", schoolId).single();
   const tz = school?.timezone ?? "Asia/Riyadh";
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: tz }).format(new Date());

@@ -24,8 +24,28 @@ export interface AssistantTool {
 
 export const ChatBody = z.object({
   messages: z.array(z.object({ role: z.enum(["user", "assistant"]), content: z.string().min(1).max(2000) })).min(1).max(12),
-  context: z.record(z.string(), z.string().nullable().optional()).optional(),
+  // Only known keys, only UUIDs: these values are placed in the system prompt.
+  context: z.object({
+    student_id: z.string().uuid().nullable().optional(),
+    school_id: z.string().uuid().nullable().optional(),
+  }).strict().optional(),
 });
+
+/**
+ * Per-user quota (limits live in the database: private.rate_limit_buckets).
+ * Returns an error payload when the caller is over the limit, else null.
+ */
+export async function checkRateLimit(
+  sb: { rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: unknown }> },
+  bucket: "assistant_parent" | "assistant_school",
+): Promise<{ status: number; error: string; retryAfter: number } | null> {
+  const { data, error } = await sb.rpc("consume_rate_limit", { p_bucket: bucket });
+  if (error) return { status: 503, error: "تعذّر التحقق من حد الاستخدام، حاول بعد قليل.", retryAfter: 30 };
+  const r = data as { allowed: boolean; retry_after_s: number };
+  if (r.allowed) return null;
+  const minutes = Math.max(1, Math.ceil(r.retry_after_s / 60));
+  return { status: 429, error: `وصلت للحد الأقصى من الأسئلة حاليًا. حاول بعد ${minutes} دقيقة.`, retryAfter: r.retry_after_s };
+}
 
 const MODEL = "claude-opus-5-5";
 const MAX_TOOL_ROUNDS = 6;

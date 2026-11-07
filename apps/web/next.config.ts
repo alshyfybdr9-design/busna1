@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // Shared workspace package shipped as TypeScript source.
+  transpilePackages: ["@busna/core"],
   poweredByHeader: false,
   async headers() {
     return [

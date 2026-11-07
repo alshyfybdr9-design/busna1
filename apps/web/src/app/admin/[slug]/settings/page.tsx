@@ -9,6 +9,7 @@ import { fmtDate } from "@/lib/format";
 import type { MemberRole } from "@/lib/types";
 import { useSchool } from "@/components/admin/school-context";
 import { PageHeader } from "@/components/admin/shell";
+import { InstitutionsSection } from "@/components/admin/institutions";
 import { BusMap } from "@/components/map/bus-map";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -101,7 +102,10 @@ export default function SettingsPage() {
           {canEdit && <Button onClick={save} loading={busy}>حفظ الإعدادات</Button>}
         </fieldset>
 
-        <Team isOwner={role === "owner"} />
+        <div className="space-y-6">
+          <InstitutionsSection />
+          <Team isOwner={role === "owner"} />
+        </div>
       </div>
     </div>
   );

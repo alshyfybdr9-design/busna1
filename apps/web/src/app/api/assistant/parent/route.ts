@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase/server";
-import { assistantAvailable, assistantErrorMessage, ChatBody, obj, runAssistant, type AssistantTool } from "@/lib/assistant/engine";
+import { assistantAvailable, assistantErrorMessage, ChatBody, checkRateLimit, obj, runAssistant, type AssistantTool } from "@/lib/assistant/engine";
 import type { ParentChild, ParentTracking } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -25,6 +25,8 @@ export async function POST(req: Request) {
   const sb = await supabaseServer();
   const { data: { user } } = await sb.auth.getUser();
   if (!user) return NextResponse.json({ error: "يجب تسجيل الدخول" }, { status: 401 });
+  const limited = await checkRateLimit(sb, "assistant_parent");
+  if (limited) return NextResponse.json({ error: limited.error }, { status: limited.status, headers: { "Retry-After": String(limited.retryAfter) } });
 
   const overview = async () => {
     const { data, error } = await sb.rpc("parent_overview");

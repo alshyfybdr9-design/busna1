@@ -13,6 +13,9 @@ importers:
       '@anthropic-ai/sdk':
         specifier: 1.6.0
         version: 1.6.0(zod@3.25.76)
+      '@busna/core':
+        specifier: workspace:*
+        version: link:../../packages/core
       '@fontsource/ibm-plex-sans-arabic':
         specifier: 5.2.6
         version: 5.2.6
@@ -31,9 +34,6 @@ importers:
       next:
         specifier: 15.5.29
         version: 15.5.29(@opentelemetry/api@1.10.0)(@types/node@22.20.5)(react-dom@19.1.10(react@19.1.10))(react@19.1.10)
-      qrcode:
-        specifier: 1.5.4
-        version: 1.5.4
       react:
         specifier: 19.1.10
         version: 19.1.10
@@ -53,9 +53,6 @@ importers:
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
-      '@types/qrcode':
-        specifier: 1.5.5
-        version: 1.5.5
       '@types/react':
         specifier: 19.1.17
         version: 19.1.17
@@ -71,6 +68,19 @@ importers:
       tailwindcss:
         specifier: 3.4.17
         version: 3.4.17
+      typescript:
+        specifier: 5.9.3
+        version: 5.9.3
+
+  packages/core:
+    dependencies:
+      qrcode:
+        specifier: 1.5.4
+        version: 1.5.4
+    devDependencies:
+      '@types/qrcode':
+        specifier: 1.5.5
+        version: 1.5.5
       typescript:
         specifier: 5.9.3
         version: 5.9.3

@@ -17,9 +17,17 @@ function normalizeSaPhone(raw: string): string | null {
   return null;
 }
 
+/** Only same-site paths: "/x" yes; "//evil.com", "/\\evil.com", "https://…" no (open redirect). */
+function safeNext(raw: string | null): string {
+  // Browsers drop tabs/newlines in URLs ("/\t/evil.com" → "//evil.com"), so reject control characters too.
+  // eslint-disable-next-line no-control-regex
+  if (!raw || !raw.startsWith("/") || raw.startsWith("//") || raw.startsWith("/\\") || /[\u0000-\u001f\u007f]/.test(raw)) return "/";
+  return raw;
+}
+
 function LoginForm() {
   const router = useRouter();
-  const next = useSearchParams().get("next") || "/";
+  const next = safeNext(useSearchParams().get("next"));
   const [mode, setMode] = useState<"phone" | "email">("phone");
   const [phone, setPhone] = useState("");
   const [code, setCode] = useState("");
@@ -30,7 +38,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const supabase = supabaseBrowser();
 
-  const done = () => { router.replace(next.startsWith("/") ? next : "/"); router.refresh(); };
+  const done = () => { router.replace(next); router.refresh(); };
 
   async function sendOtp(e: React.FormEvent) {
     e.preventDefault();

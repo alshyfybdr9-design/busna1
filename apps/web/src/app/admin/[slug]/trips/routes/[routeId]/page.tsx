@@ -43,7 +43,7 @@ export default function RouteEditor({ params }: { params: Promise<{ routeId: str
   }, [routeId, school.id]);
 
   const [form, setForm] = useState({
-    name: "", period: "morning" as TripPeriod, bus_id: "", driver_id: "", supervisor_id: "",
+    name: "", period: "morning" as TripPeriod, bus_id: "", driver_id: "", supervisor_id: "", institution_id: "",
     weekdays: [0, 1, 2, 3, 4], departure_time: "06:15", active: true,
     start_label: "", start_lat: "", start_lng: "", end_label: "", end_lat: "", end_lng: "",
   });
@@ -61,6 +61,7 @@ export default function RouteEditor({ params }: { params: Promise<{ routeId: str
     if (r) {
       setForm({
         name: r.name, period: r.period, bus_id: r.bus_id ?? "", driver_id: r.driver_id ?? "", supervisor_id: r.supervisor_id ?? "",
+        institution_id: r.institution_id,
         weekdays: r.weekdays, departure_time: r.departure_time.slice(0, 5), active: r.active,
         start_label: r.start_label ?? "", start_lat: r.start_lat?.toString() ?? "", start_lng: r.start_lng?.toString() ?? "",
         end_label: r.end_label ?? "", end_lat: r.end_lat?.toString() ?? "", end_lng: r.end_lng?.toString() ?? "",
@@ -79,10 +80,28 @@ export default function RouteEditor({ params }: { params: Promise<{ routeId: str
     setForm((f) => ({ ...f, bus_id: busId,
       driver_id: f.driver_id || b?.default_driver_id || "", supervisor_id: f.supervisor_id || b?.default_supervisor_id || "" }));
   }
+  // The school-side end of a route: the selected institution when it has a location, else the tenant's own.
+  function placeOf(institutionId: string) {
+    const i = lk.data?.institutionById.get(institutionId);
+    return i && i.lat != null && i.lng != null
+      ? { label: i.name, lat: i.lat.toString(), lng: i.lng.toString() }
+      : { label: school.name, lat: school.lat?.toString() ?? "", lng: school.lng?.toString() ?? "" };
+  }
+  function setInstitution(id: string) {
+    // Move the school-side end point with the institution, unless the admin typed a custom one.
+    setForm((f) => {
+      const prev = placeOf(f.institution_id), next = placeOf(id);
+      if (f.period === "morning" && (f.end_label === prev.label || !f.end_label))
+        return { ...f, institution_id: id, end_label: next.label, end_lat: next.lat, end_lng: next.lng };
+      if (f.period === "afternoon" && (f.start_label === prev.label || !f.start_label))
+        return { ...f, institution_id: id, start_label: next.label, start_lat: next.lat, start_lng: next.lng };
+      return { ...f, institution_id: id };
+    });
+  }
   function setPeriod(p: TripPeriod) {
     // Morning ends at school; afternoon starts at school.
     setForm((f) => {
-      const sch = { label: school.name, lat: school.lat?.toString() ?? "", lng: school.lng?.toString() ?? "" };
+      const sch = placeOf(f.institution_id);
       return p === "morning"
         ? { ...f, period: p, end_label: sch.label, end_lat: sch.lat, end_lng: sch.lng, start_label: f.start_label === sch.label ? "" : f.start_label }
         : { ...f, period: p, start_label: sch.label, start_lat: sch.lat, start_lng: sch.lng, end_label: f.end_label === sch.label ? "" : f.end_label };
@@ -116,6 +135,7 @@ export default function RouteEditor({ params }: { params: Promise<{ routeId: str
       const payload = {
         name: form.name.trim(), period: form.period, bus_id: form.bus_id || null,
         driver_id: form.driver_id || null, supervisor_id: form.supervisor_id || null, weekdays: [...form.weekdays].sort(),
+        institution_id: form.institution_id || null,
         departure_time: form.departure_time, active: form.active,
         start_label: form.start_label || null, start_lat: num(form.start_lat), start_lng: num(form.start_lng),
         end_label: form.end_label || null, end_lat: num(form.end_lat), end_lng: num(form.end_lng),
@@ -167,6 +187,13 @@ export default function RouteEditor({ params }: { params: Promise<{ routeId: str
             <h2 className="font-semibold">البيانات الأساسية</h2>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="اسم الرحلة" className="sm:col-span-2"><Input value={form.name} onChange={(e) => set("name", e.target.value)} placeholder="مثال: النرجس — صباحي" /></Field>
+              {lk.data?.multiInstitution && (
+                <Field label="الجهة" className="sm:col-span-2">
+                  <Select value={form.institution_id || lk.data.institutions[0]?.id} onChange={(e) => setInstitution(e.target.value)}>
+                    {lk.data.institutions.filter((i) => i.status === "active" || i.id === form.institution_id).map((i) => <option key={i.id} value={i.id}>{i.name}</option>)}
+                  </Select>
+                </Field>
+              )}
               <Field label="الفترة">
                 <Select value={form.period} onChange={(e) => setPeriod(e.target.value as TripPeriod)}>
                   <option value="morning">صباحية (إلى المدرسة)</option><option value="afternoon">مسائية (العودة للمنازل)</option>

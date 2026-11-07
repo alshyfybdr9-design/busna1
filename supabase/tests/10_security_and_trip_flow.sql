@@ -551,4 +551,98 @@ do $$ begin
   assert tests.count_notifications('student_boarded', 'a4000000-0000-4000-8000-000000000007') >= 1, 'parent notified by the scan';
 end $$;
 
+\echo '▶ phase 1: a confirmed EMAIL alone never links guardian records'
+insert into public.guardians (id, school_id, full_name, phone, email) values
+  ('a3000000-0000-4000-8000-0000000000e1', 'a0000000-0000-4000-8000-000000000001', 'أم سلطان', '0559990001', 'mom@example.sa');
+-- "Confirm email" disabled in Supabase => email_confirmed_at is set at sign-up without proof of ownership
+insert into auth.users (id, email, email_confirmed_at) values ('30000000-0000-4000-8000-0000000000e1', 'mom@example.sa', now());
+select tests.login('30000000-0000-4000-8000-0000000000e1'); set role authenticated;
+do $$ declare r jsonb; begin
+  r := public.claim_my_records();
+  assert (r ->> 'guardians_linked')::int = 0, 'email must not link: ' || r::text;
+  assert (select count(*) from public.students) = 0, 'no access to any child';
+end $$;
+reset role;
+do $$ begin
+  assert (select user_id from public.guardians where id = 'a3000000-0000-4000-8000-0000000000e1') is null;
+end $$;
+
+\echo '▶ phase 1: rate limits are per user and defined server-side'
+select tests.login(:parent2); set role authenticated;
+do $$ declare r jsonb; i int; begin
+  for i in 1..30 loop
+    r := public.consume_rate_limit('assistant_parent');
+    assert (r ->> 'allowed')::boolean, 'hit ' || i || ' allowed';
+  end loop;
+  r := public.consume_rate_limit('assistant_parent');
+  assert not (r ->> 'allowed')::boolean and (r ->> 'retry_after_s')::int > 0, r::text;
+end $$;
+select tests.expect_error($q$select public.consume_rate_limit('anything')$q$, 'unknown_bucket');
+select tests.expect_error('select count(*) from private.rate_limits', '42501');
+reset role;
+select tests.login(:parent1); set role authenticated;
+do $$ begin
+  assert (public.consume_rate_limit('assistant_parent') ->> 'allowed')::boolean, 'another user has their own quota';
+end $$;
+reset role;
+set role anon;
+select tests.expect_error($q$select public.consume_rate_limit('assistant_parent')$q$, '42501');
+reset role;
+
+\echo '▶ phase 1: institutions belong to one tenant and default sensibly'
+create function tests.inst(p_school uuid) returns uuid language sql stable security definer set search_path = '' as $$
+  select id from public.institutions where school_id = p_school order by created_at limit 1
+$$;
+grant execute on function tests.inst(uuid) to authenticated;
+do $$ begin
+  assert (select count(*) from public.schools s where not exists (select 1 from public.institutions i where i.school_id = s.id)) = 0,
+    'every tenant (incl. ones created later) has an institution';
+  assert (select count(*) from public.students where institution_id is null) = 0;
+  assert (select count(*) from public.trips t join public.routes r on r.id = t.route_id where t.institution_id <> r.institution_id) = 0,
+    'trips inherit the route''s institution';
+end $$;
+select tests.login(:owner_a); set role authenticated;
+do $$ declare u uuid; s uuid; begin
+  assert (select count(*) from public.institutions where school_id = 'b0000000-0000-4000-8000-000000000001') = 0,
+    'owner A cannot see school B institutions';
+  assert (select count(*) from public.institutions where school_id = 'a0000000-0000-4000-8000-000000000001') = 1;
+  insert into public.institutions (school_id, kind, name) values ('a0000000-0000-4000-8000-000000000001', 'university', 'جامعة الرياض — فرع الملقا')
+    returning id into u;
+  insert into public.students (school_id, student_number, full_name, institution_id)
+    values ('a0000000-0000-4000-8000-000000000001', 'U-1001', 'ريان خالد', u) returning id into s;
+  assert (select institution_id from public.students where id = s) = u;
+  insert into public.students (school_id, student_number, full_name)
+    values ('a0000000-0000-4000-8000-000000000001', 'S-1002', 'جود فهد') returning id into s;
+  assert (select institution_id from public.students where id = s) is not null, 'omitted institution gets the default';
+  -- routes: save_route takes the institution; omitting it later keeps it
+  s := public.save_route('a0000000-0000-4000-8000-000000000001', null, jsonb_build_object('name', 'الجامعة — صباحي', 'period', 'morning',
+         'weekdays', jsonb_build_array(0, 1, 2), 'departure_time', '06:00', 'institution_id', u), '[]', '[]');
+  assert (select institution_id from public.routes where id = s) = u, 'route saved under the chosen institution';
+  perform public.save_route('a0000000-0000-4000-8000-000000000001', s, jsonb_build_object('name', 'الجامعة — صباحي', 'period', 'morning',
+         'weekdays', jsonb_build_array(0, 1, 2), 'departure_time', '06:10'), '[]', '[]');
+  assert (select institution_id from public.routes where id = s) = u, 'omitted institution keeps the current one';
+end $$;
+select tests.expect_error(format($q$select public.save_route('a0000000-0000-4000-8000-000000000001', null,
+  jsonb_build_object('name', 'x', 'period', 'morning', 'weekdays', jsonb_build_array(0), 'departure_time', '06:00', 'institution_id', %L), '[]', '[]')$q$,
+  tests.inst('b0000000-0000-4000-8000-000000000001')), 'institution_not_found');
+-- another tenant's institution cannot be referenced (composite FK)
+select tests.expect_error(format($q$insert into public.students (school_id, student_number, full_name, institution_id)
+  values ('a0000000-0000-4000-8000-000000000001', 'X-1', 'اختبار', %L)$q$,
+  tests.inst('b0000000-0000-4000-8000-000000000001')), '23503');
+-- and cannot be created inside another tenant
+select tests.expect_error($q$insert into public.institutions (school_id, name) values ('b0000000-0000-4000-8000-000000000001', 'دخيلة')$q$, '42501');
+-- org_kind is a platform decision
+select tests.expect_error($q$update public.schools set org_kind = 'transport_company' where id = 'a0000000-0000-4000-8000-000000000001'$q$, '42501');
+reset role;
+select tests.login(:viewer_a); set role authenticated;
+select tests.expect_error($q$insert into public.institutions (school_id, name) values ('a0000000-0000-4000-8000-000000000001', 'مشاهد')$q$, '42501');
+reset role;
+select tests.login(:parent_b); set role authenticated;
+do $$ begin
+  assert (select count(*) from public.institutions where school_id = 'a0000000-0000-4000-8000-000000000001') = 0,
+    'parents of school B see nothing of school A';
+  assert (select count(*) from public.institutions) = 1;
+end $$;
+reset role;
+
 \echo '✔ all Busna database tests passed'
