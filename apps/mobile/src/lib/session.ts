@@ -68,8 +68,10 @@ async function raw<T>(method: string, path: string, body?: unknown, token?: stri
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: AbortSignal.timeout(timeoutMs),
     });
-  } catch {
-    throw new ApiError(0, 'network', lang === 'ar' ? 'لا يوجد اتصال بالخادم. تحقق من الإنترنت.' : 'No connection to the server.');
+  } catch (e) {
+    // في وضع التطوير نعرض العنوان وسبب الفشل لتسهيل التشخيص؛ في الإنتاج رسالة بسيطة فقط
+    const detail = __DEV__ ? `\n${API_URL}\n${(e as Error)?.message ?? ''}` : '';
+    throw new ApiError(0, 'network', (lang === 'ar' ? 'لا يوجد اتصال بالخادم. تحقق من الإنترنت.' : 'No connection to the server.') + detail);
   }
   const json: any = await res.json().catch(() => ({}));
   if (!res.ok) throw new ApiError(res.status, json?.error?.code ?? 'error', json?.error?.message ?? 'Error', json?.error?.details);
