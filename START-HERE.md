@@ -15,11 +15,13 @@
 
 ## الخطوة 2: نزّل المشروع
 
-افتح Terminal (ماك) أو PowerShell (ويندوز) واكتب (استبدل الرابط برابط مستودعك):
+افتح Terminal (ماك) أو PowerShell (ويندوز) واكتب:
 
 ```bash
-git clone https://github.com/<حسابك>/<المستودع>.git busna
+git clone -b busna-v2 https://github.com/alshyfybdr9-design/busna1.git busna
 ```
+
+(النسخة الجديدة في الفرع `busna-v2`. الفرع `main` يحتوي النسخة السابقة كما هي.)
 
 ```bash
 cd busna
