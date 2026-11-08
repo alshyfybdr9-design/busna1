@@ -5,7 +5,16 @@ WORKDIR /app
 COPY package.json package-lock.json tsconfig.base.json ./
 COPY apps/api/package.json apps/api/
 COPY apps/web/package.json apps/web/
-RUN npm ci --no-audit --no-fund
+# إعدادات تتحمل الشبكات الضعيفة: إعادة محاولة، مهلة أطول، اتصالات أقل، وذاكرة تخزين
+# مؤقت تبقى بين المحاولات (فلا يُعاد تنزيل ما اكتمل). تُعاد العملية حتى 3 مرات.
+RUN --mount=type=cache,target=/root/.npm \
+    npm config set fetch-retries 6 && \
+    npm config set fetch-retry-mintimeout 20000 && \
+    npm config set fetch-retry-maxtimeout 180000 && \
+    npm config set fetch-timeout 600000 && \
+    npm config set maxsockets 4 && \
+    for i in 1 2 3; do npm ci --no-audit --no-fund --prefer-offline && break; \
+      if [ "$i" = 3 ]; then exit 1; fi; echo "npm ci failed, retrying ($i)..."; sleep 10; done
 COPY db db
 COPY apps/api apps/api
 COPY apps/web apps/web
