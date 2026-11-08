@@ -1,0 +1,103 @@
+{
+  "expo": {
+    "name": "باصنا",
+    "slug": "busna",
+    "scheme": "busna",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.example.busna",
+      "associatedDomains": [
+        "applinks:app.busna.example"
+      ],
+      "infoPlist": {
+        "UIBackgroundModes": [
+          "location",
+          "remote-notification"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.example.busna",
+      "adaptiveIcon": {
+        "backgroundColor": "#DCFCE7",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_LOCATION",
+        "CAMERA",
+        "POST_NOTIFICATIONS"
+      ],
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "app.busna.example",
+              "pathPrefix": "/invite"
+            },
+            {
+              "scheme": "https",
+              "host": "app.busna.example",
+              "pathPrefix": "/t"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ]
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      [
+        "expo-localization",
+        {
+          "supportsRTL": true,
+          "forcesRTL": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "يستخدم باصنا موقعك أثناء الرحلة فقط (حتى عند إغلاق الشاشة) ليتمكن أولياء الأمور والإدارة من متابعة الباص. يتوقف التتبع تلقائيًا عند إنهاء الرحلة.",
+          "locationWhenInUsePermission": "يستخدم باصنا موقعك أثناء الرحلة لمتابعة الباص.",
+          "isIosBackgroundLocationEnabled": true,
+          "isAndroidBackgroundLocationEnabled": true,
+          "isAndroidForegroundServiceEnabled": true
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "يستخدم باصنا الكاميرا لمسح بطاقات QR للطلاب ورمز مؤخرة الباص.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#16a34a"
+        }
+      ]
+    ],
+    "extra": {
+      "eas": {}
+    }
+  }
+}

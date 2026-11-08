@@ -1,0 +1,7 @@
+{
+  "applinks": {
+    "details": [
+      { "appIDs": ["REPLACE_TEAM_ID.com.example.busna"], "components": [{ "/": "/invite/*" }, { "/": "/t/*" }] }
+    ]
+  }
+}
