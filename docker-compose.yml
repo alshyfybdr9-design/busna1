@@ -1,0 +1,57 @@
+# تشغيل باصنا كاملًا على جهازك بأمر واحد:  docker compose up --build
+# ثم افتح http://localhost:5173  (رمز الجهة التجريبية: DEMO01)
+# ⚠️ للتجربة المحلية فقط — كلمات المرور هنا افتراضية وغير آمنة للإنتاج.
+services:
+  db:
+    image: ${POSTGRES_IMAGE:-postgres:16-alpine}
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local_admin_pw}
+    volumes:
+      - busna-db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  api:
+    build:
+      context: .
+      target: api
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: development
+      PORT: 4000
+      DATABASE_ADMIN_URL: postgres://postgres:${POSTGRES_PASSWORD:-local_admin_pw}@db:5432/postgres
+      DATABASE_OWNER_URL: postgres://busna_owner:local_owner_pw@db:5432/busna
+      DATABASE_APP_URL: postgres://busna_app:local_app_pw@db:5432/busna
+      DATABASE_AUTH_URL: postgres://busna_auth:local_auth_pw@db:5432/busna
+      DATABASE_WORKER_URL: postgres://busna_worker:local_worker_pw@db:5432/busna
+      JWT_SECRET: ${JWT_SECRET:-local-demo-only-secret-change-me-0123456789}
+      APP_PUBLIC_URL: http://localhost:5173
+      CORS_ORIGINS: http://localhost:5173
+      PUSH_PROVIDER: none
+      SEED_DEMO: ${SEED_DEMO:-true}
+      SEED_PASSWORD: ${SEED_PASSWORD:-Demo-pass-2026}
+    ports:
+      - "4000:4000"
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+    depends_on:
+      - api
+    environment:
+      VITE_API_PROXY: http://api:4000
+    ports:
+      - "5173:5173"
+
+volumes:
+  busna-db:
