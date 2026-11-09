@@ -11,6 +11,8 @@ import { parentRoutes } from './routes/parent.js';
 import { tenantAdminRoutes } from './routes/tenant-admin.js';
 import { tenantOpsRoutes } from './routes/tenant-ops.js';
 import { platformRoutes } from './routes/platform.js';
+import { supportRoutes } from './routes/support.js';
+import { assistantRoutes } from './routes/assistant.js';
 import { getPools } from './db/pool.js';
 
 /** تحويل أخطاء قاعدة البيانات إلى رموز آمنة للعرض (بدون تفاصيل تقنية للمستخدم) */
@@ -82,6 +84,8 @@ export async function buildApp(opts: { logger?: boolean } = {}) {
     await api.register(tenantAdminRoutes);
     await api.register(tenantOpsRoutes);
     await api.register(platformRoutes);
+    await api.register(supportRoutes);
+    await api.register(assistantRoutes);
   }, { prefix: '/v1' });
 
   return app;

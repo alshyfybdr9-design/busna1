@@ -7,6 +7,7 @@ import { parse, idParam, isoDate, todayIn, audit } from '../lib/util.js';
 import { formatLocation, latestLocation, loadTenant } from '../services/trips.js';
 import { enqueue } from '../services/outbox.js';
 import { etaProvider, type EtaResult } from '../integrations/routing.js';
+import { submitAbsence } from '../services/absences.js';
 
 export async function parentRoutes(app: FastifyInstance) {
   const auth = { preHandler: requireAuth(['parent']) };
@@ -133,29 +134,7 @@ export async function parentRoutes(app: FastifyInstance) {
       }),
       req.body,
     );
-    return withCtx(req.ctx, async (c) => {
-      const child = await one(c, `select id from students where id = $1`, [body.studentId]);
-      if (!child) throw notFound();
-      const tenant = await loadTenant(c, req.ctx.tenantId!);
-      if (body.date < todayIn(tenant.timezone)) throw new AppError(400, 'absence_date_past');
-      const existing = await one(
-        c,
-        `select id, status from absences where student_id = $1 and absence_date = $2 and direction = $3 and status in ('pending', 'approved')`,
-        [body.studentId, body.date, body.direction],
-      );
-      if (existing) return { absence: existing, duplicate: true };
-      const a = await one(
-        c,
-        `insert into absences (tenant_id, student_id, absence_date, direction, reason, requested_by)
-         values ($1, $2, $3, $4, $5, $6) returning id`,
-        [req.ctx.tenantId, body.studentId, body.date, body.direction, body.reason ?? null, req.ctx.userId],
-      );
-      const auto = await one<{ ok: boolean }>(c, `select app.auto_approve_absence($1) as ok`, [a!.id]);
-      await audit(c, req.ctx, 'absence.requested', 'absence', a!.id, { autoApproved: auto?.ok });
-      if (auto?.ok) await enqueue(c, req.ctx.tenantId!, 'absence_updated', { absenceId: a!.id });
-      const absence = await one(c, `select id, status, absence_date as "date", direction from absences where id = $1`, [a!.id]);
-      return { absence };
-    });
+    return withCtx(req.ctx, async (c) => submitAbsence(c, req.ctx, body));
   });
 
   app.post('/parent/absences/:id/cancel', auth, async (req) => {

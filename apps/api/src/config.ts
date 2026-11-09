@@ -23,6 +23,10 @@ const schema = z.object({
   PUSH_PROVIDER: z.enum(['none', 'expo']).default('none'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
   ROUTING_PROVIDER: z.enum(['none']).default('none'),
+  // «مساعد باصنا»: none = معطّل (يعمل الدعم التقليدي والبحث في قاعدة المعرفة فقط)
+  AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
+  AI_MODEL: z.string().default('claude-opus-5-5'),
+  AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
   WORKER_ENABLED: bool.default(true),
   TRUST_PROXY: bool.default(false),
 });
@@ -55,6 +59,10 @@ export const tenantSettingsSchema = z.object({
   requireRearQrScan: z.boolean().default(false),
   emergencyNumber: z.string().max(20).default('911'),
   supportHours: z.string().max(200).nullable().default(null),
+  assistantEnabled: z.boolean().default(true),
+  assistantDailyLimitPerUser: z.number().int().min(0).max(500).default(30),
+  assistantDailyLimitTenant: z.number().int().min(0).max(100000).default(1000),
+  assistantRetentionDays: z.number().int().min(1).max(365).default(30),
 });
 export type TenantSettings = z.infer<typeof tenantSettingsSchema>;
 

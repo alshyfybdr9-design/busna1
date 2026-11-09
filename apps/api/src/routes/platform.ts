@@ -11,6 +11,7 @@ import { inviteLinks } from './tenant-admin.js';
 import { pushProvider } from '../integrations/push.js';
 import { etaProvider } from '../integrations/routing.js';
 import { workerStatus } from '../worker/dispatcher.js';
+import { aiProvider } from '../integrations/ai.js';
 
 export async function platformRoutes(app: FastifyInstance) {
   const auth = { preHandler: requireAuth(['platform_admin']) };
@@ -85,7 +86,7 @@ export async function platformRoutes(app: FastifyInstance) {
         email: { configured: false },
         sms: { configured: false },
         payments: { configured: false },
-        ai: { configured: false },
+        ai: { provider: aiProvider().name, configured: aiProvider().configured },
       },
     };
   });

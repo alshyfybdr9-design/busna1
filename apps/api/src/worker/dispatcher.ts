@@ -24,6 +24,7 @@ const PUSH_GENERIC = {
   parent: { title: 'باصنا', body: 'يوجد تحديث جديد على رحلة النقل. افتح التطبيق للتفاصيل.' },
   staff: { title: 'باصنا — تنبيه تشغيل', body: 'يوجد تنبيه تشغيلي يحتاج المتابعة. افتح التطبيق.' },
   absence: { title: 'باصنا', body: 'تم تحديث طلب الغياب. افتح التطبيق للتفاصيل.' },
+  ticket: { title: 'باصنا — الدعم', body: 'يوجد تحديث على تذكرة دعم. افتح التطبيق للتفاصيل.' },
 };
 
 const DIRECTION_AR: Record<string, string> = { to_school: 'الذهاب', from_school: 'العودة' };
@@ -47,7 +48,7 @@ async function staffOf(c: Db, tenantId: string) {
   );
 }
 
-async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload: any; id: number }): Promise<{ notes: Note[]; audience: 'parent' | 'staff' | 'absence' }> {
+async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload: any; id: number }): Promise<{ notes: Note[]; audience: 'parent' | 'staff' | 'absence' | 'ticket'; platform?: boolean }> {
   const p = ev.payload;
   switch (ev.kind) {
     case 'trip_started':
@@ -129,6 +130,37 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
         notes: [{ userId: a.requested_by, kind: 'absence_updated', title: label[a.status], body: label[a.status] + '.', dedupeKey: `absence:${a.id}:${a.status}`, data: { absenceId: a.id } }],
       };
     }
+    case 'ticket_event': {
+      const t = await one(c, `select id, ref, queue, subject, status, requester_user_id, assigned_to from support_tickets where id = $1`, [p.ticketId]);
+      if (!t) return { notes: [], audience: 'ticket' };
+      const STATUS: Record<string, string> = { open: 'مفتوحة', in_progress: 'قيد المعالجة', waiting_user: 'بانتظار ردك', resolved: 'تم الحل', closed: 'مغلقة' };
+      const data = { ticketId: t.id as string };
+      if (p.event === 'agent_reply' || p.event === 'status') {
+        return {
+          audience: 'ticket',
+          notes: [{
+            userId: t.requester_user_id, kind: 'ticket_update',
+            title: `تذكرة #${t.ref}`,
+            body: p.event === 'status' ? `تغيّرت حالة تذكرتك إلى: ${STATUS[p.status] ?? p.status}.` : 'يوجد رد جديد من فريق الدعم على تذكرتك.',
+            dedupeKey: `ticket:${t.id}:${p.event}:${ev.id}`, data,
+          }],
+        };
+      }
+      // تذكرة جديدة أو رد من صاحبها ← فريق الطابور المسؤول (الجهة أو المنصة)
+      const agents = t.queue === 'platform'
+        ? await many<{ user_id: string }>(c, `select id as user_id from users where is_platform_admin and status = 'active'`)
+        : t.assigned_to && p.event === 'requester_reply' ? [{ user_id: t.assigned_to }] : await staffOf(c, ev.tenant_id);
+      return {
+        audience: 'ticket',
+        platform: t.queue === 'platform',
+        notes: agents.map((a) => ({
+          userId: a.user_id, kind: 'ticket_queue',
+          title: p.event === 'created' ? `تذكرة دعم جديدة #${t.ref}` : `رد جديد على التذكرة #${t.ref}`,
+          body: String(t.subject).slice(0, 140),
+          dedupeKey: `ticketq:${t.id}:${p.event}:${ev.id}`, data,
+        })),
+      };
+    }
     default:
       return { notes: [], audience: 'parent' };
   }
@@ -147,7 +179,7 @@ export async function processOutbox(limit = 50): Promise<number> {
     for (const ev of events) {
       try {
         await c.query('savepoint ev');
-        const { notes, audience } = await buildNotes(c, ev);
+        const { notes, audience, platform } = await buildNotes(c, ev);
         for (const n of notes) {
           const generic = PUSH_GENERIC[audience];
           const row = await one(
@@ -155,7 +187,7 @@ export async function processOutbox(limit = 50): Promise<number> {
             `insert into notifications (tenant_id, user_id, kind, title, body, push_title, push_body, data, dedupe_key, push_status)
              values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
              on conflict (user_id, dedupe_key) do nothing returning id`,
-            [ev.tenant_id, n.userId, n.kind, n.title, n.body, generic.title, generic.body, JSON.stringify(n.data ?? {}), n.dedupeKey,
+            [platform ? null : ev.tenant_id, n.userId, n.kind, n.title, n.body, generic.title, generic.body, JSON.stringify(n.data ?? {}), n.dedupeKey,
               push.configured ? 'pending' : 'skipped'],
           );
           if (row && push.configured) pending.push({ id: row.id, userId: n.userId, push: generic });
@@ -240,7 +272,7 @@ export async function runSafetyChecks(): Promise<number> {
 }
 
 /** سياسة الاحتفاظ: الإحداثيات لا تُخزن لمدة غير محدودة */
-export async function runRetention(): Promise<{ locationsDeleted: number; notificationsDeleted: number }> {
+export async function runRetention(): Promise<{ locationsDeleted: number; notificationsDeleted: number; conversationsDeleted: number }> {
   return withWorkerDb(async (c) => {
     const tenants = await many(c, `select id, settings from tenants`);
     let locationsDeleted = 0;
@@ -250,10 +282,19 @@ export async function runRetention(): Promise<{ locationsDeleted: number; notifi
       locationsDeleted += r.rowCount ?? 0;
     }
     const n = await c.query(`delete from notifications where created_at < now() - interval '180 days'`);
+    // محادثات المساعد: تُحذف بعد مدة الجهة (افتراضي 30 يومًا)؛ سجل الأدوات (بيانات وصفية فقط) سنة
+    let conversationsDeleted = 0;
+    for (const t of tenants) {
+      const days = tenantSettings(t.settings).assistantRetentionDays;
+      const r = await c.query(`delete from assistant_conversations where tenant_id = $1 and last_message_at < now() - make_interval(days => $2)`, [t.id, days]);
+      conversationsDeleted += r.rowCount ?? 0;
+    }
+    await c.query(`update assistant_actions set status = 'expired', decided_at = now() where status = 'pending' and expires_at < now()`);
+    await c.query(`delete from assistant_tool_log where created_at < now() - interval '365 days'`);
     await c.query(`insert into audit_logs (action, entity, details) values ('retention.run', 'system', $1)`, [
-      JSON.stringify({ locationsDeleted, notificationsDeleted: n.rowCount ?? 0 }),
+      JSON.stringify({ locationsDeleted, notificationsDeleted: n.rowCount ?? 0, conversationsDeleted }),
     ]);
-    return { locationsDeleted, notificationsDeleted: n.rowCount ?? 0 };
+    return { locationsDeleted, notificationsDeleted: n.rowCount ?? 0, conversationsDeleted };
   });
 }
 

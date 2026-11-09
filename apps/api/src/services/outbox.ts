@@ -5,7 +5,8 @@ export type OutboxKind =
   | 'trip_cancelled'
   | 'rider_event'
   | 'safety_alert'
-  | 'absence_updated';
+  | 'absence_updated'
+  | 'ticket_event';
 
 /**
  * يُكتب الحدث في نفس معاملة التغيير (Transactional Outbox)،
