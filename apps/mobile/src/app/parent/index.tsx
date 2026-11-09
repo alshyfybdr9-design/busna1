@@ -18,11 +18,12 @@ export default function ParentHome() {
   const q = usePolling(() => api('GET', '/parent/children'), 20_000);
   const me = usePolling(() => api('GET', '/me'), 60_000);
   return (
-    <Screen>
+    <Screen onRefresh={() => Promise.all([q.refresh(), me.refresh()])}>
       <View style={[s.row, { justifyContent: 'space-between' }]}>
         <T bold size={18}>{me.data?.tenant?.name ?? ''}</T>
         <Btn kind="secondary" title={`${tr('الإشعارات', 'Notifications')}${me.data?.unreadNotifications ? ` (${me.data.unreadNotifications})` : ''}`} onPress={() => router.push('/notifications')} />
       </View>
+      <Btn kind="secondary" title={tr('اسأل مساعد باصنا', 'Ask Busna Assistant')} onPress={() => router.push('/assistant')} />
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
       {q.data && q.data.children.length === 0 && <Card><T muted>{tr('لا يوجد أبناء مرتبطون بحسابك. تواصل مع إدارة النقل.', 'No children linked to your account. Contact the transport office.')}</T></Card>}

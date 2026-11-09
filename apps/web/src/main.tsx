@@ -4,7 +4,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import './styles.css';
 import { I18nProvider } from './i18n';
-import { SessionProvider, useSession } from './session';
+import { SessionProvider } from './session';
 import { ApiError } from './api';
 import { EntryPage, TenantLinkPage, InvitePage, ContextPicker, MobileOnlyPage } from './pages/auth';
 import { TenantLayout, PlatformLayout } from './pages/Layout';
@@ -17,6 +17,15 @@ import { Team } from './pages/tenant/Team';
 import { Absences, Settings, Audit } from './pages/tenant/Misc';
 import { PlatformTenants, PlatformHealth } from './pages/platform/Platform';
 import { Loading } from './components/ui';
+import { TicketsPage, TicketDetailPage } from './pages/support/Tickets';
+import { KnowledgePage } from './pages/support/Knowledge';
+import { AssistantPage } from './pages/support/Assistant';
+import { useSession, currentMembership } from './session';
+
+function TenantKnowledge() {
+  const { session } = useSession();
+  return <KnowledgePage scope="tenant" canEdit={currentMembership(session)?.role === 'tenant_admin'} />;
+}
 
 const qc = new QueryClient({
   defaultOptions: {
@@ -60,10 +69,17 @@ createRoot(document.getElementById('root')!).render(
                   <Route path="team" element={<Team />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="audit" element={<Audit />} />
+                  <Route path="support" element={<TicketsPage base="/app/support" />} />
+                  <Route path="support/:id" element={<TicketDetailPage base="/app/support" />} />
+                  <Route path="knowledge" element={<TenantKnowledge />} />
+                  <Route path="assistant" element={<AssistantPage />} />
                 </Route>
                 <Route path="/platform" element={<PlatformLayout />}>
                   <Route index element={<PlatformTenants />} />
                   <Route path="health" element={<PlatformHealth />} />
+                  <Route path="support" element={<TicketsPage base="/platform/support" platform />} />
+                  <Route path="support/:id" element={<TicketDetailPage base="/platform/support" />} />
+                  <Route path="knowledge" element={<KnowledgePage scope="platform" canEdit />} />
                 </Route>
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>

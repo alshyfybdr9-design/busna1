@@ -89,6 +89,11 @@ export function Settings() {
         <div className="field"><label>{lang === 'ar' ? 'أوقات الدعم (نص يظهر لأولياء الأمور)' : 'Support hours'}</label><input value={s.supportHours ?? ''} onChange={(e) => setS('supportHours', e.target.value || null)} /></div>
         {bool('parentTrackingEnabled', lang === 'ar' ? 'السماح لأولياء الأمور بتتبع الباص أثناء الرحلة' : 'Allow parents to track bus during trips')}
         {bool('absenceAutoApprove', lang === 'ar' ? 'اعتماد طلبات الغياب تلقائيًا' : 'Auto-approve absence requests')}
+        <h3 style={{ marginTop: 16 }}>{lang === 'ar' ? 'مساعد باصنا' : 'Assistant'}</h3>
+        {bool('assistantEnabled', lang === 'ar' ? 'تفعيل المساعد الآلي لمستخدمي الجهة' : 'Enable the assistant')}
+        {num('assistantDailyLimitPerUser', lang === 'ar' ? 'حد الرسائل اليومي لكل مستخدم' : 'Daily messages per user')}
+        {num('assistantDailyLimitTenant', lang === 'ar' ? 'حد الرسائل اليومي للجهة (للتحكم بالتكلفة)' : 'Daily messages per organization (cost cap)')}
+        {num('assistantRetentionDays', lang === 'ar' ? 'مدة الاحتفاظ بالمحادثات (أيام)' : 'Conversation retention (days)', lang === 'ar' ? 'تُحذف المحادثات الأقدم تلقائيًا' : 'Older conversations are deleted automatically')}
         {bool('requireRearQrScan', lang === 'ar' ? 'إلزام السائق بمسح رمز مؤخرة الباص في الفحص' : 'Require rear-of-bus QR scan in inspection')}
         {save.error && <ErrorBox error={save.error} />}
         {save.isSuccess && <div className="alert info">✓</div>}

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import NetInfo from '@react-native-community/netinfo';
 import { ApiError, setApiLang } from '../lib/session';
@@ -46,12 +46,17 @@ export function timeText(ts: string | null | undefined, lang: 'ar' | 'en') {
 }
 
 // ---------------- مكونات ----------------
-export function Screen({ children, scroll = true, padded = true }: { children: ReactNode; scroll?: boolean; padded?: boolean }) {
+/** onRefresh: يفعّل السحب للأسفل لتحديث الشاشة */
+export function Screen({ children, scroll = true, padded = true, onRefresh }: { children: ReactNode; scroll?: boolean; padded?: boolean; onRefresh?: () => Promise<unknown> | void }) {
+  const [refreshing, setRefreshing] = useState(false);
   const body = <View style={padded ? { padding: 16, gap: 12 } : undefined}>{children}</View>;
+  const refresh = onRefresh
+    ? <RefreshControl refreshing={refreshing} tintColor={C.green} colors={[C.green]} onRefresh={async () => { setRefreshing(true); try { await onRefresh(); } finally { setRefreshing(false); } }} />
+    : undefined;
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }} edges={['bottom']}>
       <OfflineBanner />
-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled">{body}</ScrollView> : <View style={{ flex: 1 }}>{body}</View>}
+      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" refreshControl={refresh}>{body}</ScrollView> : <View style={{ flex: 1 }}>{body}</View>}
     </SafeAreaView>
   );
 }
@@ -152,5 +157,14 @@ export function usePolling<T>(fn: () => Promise<T>, intervalMs: number, deps: un
     return () => { alive = false; if (h) clearInterval(h); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [...deps, tick]);
-  return { data, error, loading, reload: () => setTick((x) => x + 1) };
+  /** تحديث فوري ينتظر النتيجة (للسحب للأسفل) */
+  const refresh = async () => {
+    try {
+      setData(await fn());
+      setError(null);
+    } catch (e) {
+      setError(e);
+    }
+  };
+  return { data, error, loading, reload: () => setTick((x) => x + 1), refresh };
 }

@@ -35,6 +35,9 @@ export default function RootLayout() {
             <Stack.Screen name="parent/absence" options={{ title: 'طلب غياب' }} />
             <Stack.Screen name="notifications" options={{ title: 'الإشعارات' }} />
             <Stack.Screen name="support" options={{ title: 'الدعم والتواصل' }} />
+            <Stack.Screen name="assistant" options={{ title: 'مساعد باصنا' }} />
+            <Stack.Screen name="tickets/new" options={{ title: 'تذكرة دعم جديدة' }} />
+            <Stack.Screen name="tickets/[id]" options={{ title: 'تذكرة الدعم' }} />
           </Stack>
         </SessionProvider>
       </LangProvider>

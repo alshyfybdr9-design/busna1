@@ -11,6 +11,7 @@ export function Dashboard() {
   // تحديث دوري (Polling) كل 10 ثوانٍ
   const dash = useQuery({ queryKey: ['dashboard'], queryFn: () => api('GET', '/tenant/dashboard'), refetchInterval: 10_000 });
   const live = useQuery({ queryKey: ['live'], queryFn: () => api('GET', '/tenant/live'), refetchInterval: 10_000 });
+  const tickets = useQuery({ queryKey: ['tickets', 'queue', 'active'], queryFn: () => api('GET', '/support/tickets?scope=queue&status=active'), refetchInterval: 30_000 });
   if (dash.isLoading) return <Loading />;
   if (dash.error) return <ErrorBox error={dash.error} onRetry={() => dash.refetch()} />;
   const d = dash.data;
@@ -96,7 +97,8 @@ export function Dashboard() {
         </div>
         <div className="card stack">
           <div className="row between"><h2 style={{ margin: 0 }}>{t('pendingAbsences')}</h2><Link to="/app/absences">{d.pendingAbsences}</Link></div>
-          <div className="row between"><h2 style={{ margin: 0 }}>{t('supportTickets')}</h2><span className="badge gray">{t('comingPhase')}</span></div>
+          <div className="row between"><h2 style={{ margin: 0 }}>{t('supportTickets')}</h2><Link to="/app/support">{tickets.data ? tickets.data.tickets.length : '…'}</Link></div>
+          {tickets.data?.tickets.some((x: any) => x.priority === 'urgent') && <div className="alert error small">{lang === 'ar' ? 'توجد تذكرة عاجلة' : 'There is an urgent ticket'}</div>}
         </div>
       </div>
     </div>

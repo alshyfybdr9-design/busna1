@@ -9,7 +9,7 @@ export default function DriverHome() {
   usePushRegistration();
   const q = usePolling(() => api('GET', '/driver/trips'), 30_000);
   return (
-    <Screen>
+    <Screen onRefresh={q.refresh}>
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
       {q.data && q.data.trips.length === 0 && (

@@ -1,6 +1,7 @@
 import { Linking, Platform, View } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { api } from '../../../lib/session';
+import { BusMap } from '../../../components/BusMap';
 import { Btn, C, Card, DIR_LABEL, ErrorView, Loading, Pill, RIDER_LABEL, Screen, T, TRIP_LABEL, ageText, s, timeText, useLang, usePolling } from '../../../components/ui';
 
 const EVENT: Record<string, [string, string]> = {
@@ -20,9 +21,10 @@ export default function ChildStatus() {
   if (q.loading && !q.data) return <Loading />;
   if (!q.data) return <Screen><ErrorView error={q.error} onRetry={q.reload} /></Screen>;
   const { child, trip, tracking, eta } = q.data;
+  const refreshAll = () => Promise.all([q.refresh(), h.refresh()]);
   const loc = tracking?.location;
   return (
-    <Screen>
+    <Screen onRefresh={refreshAll}>
       <T bold size={22}>{child.fullName}</T>
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
       {!trip && <Card><T muted>{tr('لا توجد رحلة لهذا اليوم.', 'No trip today.')}</T></Card>}
@@ -46,7 +48,8 @@ export default function ChildStatus() {
                   ? <Pill tone="amber" text={`${tr('آخر تحديث', 'Last update')} ${ageText(loc.ageSeconds, lang)}`} />
                   : <Pill text={`● ${tr('مباشر', 'Live')} · ${ageText(loc.ageSeconds, lang)}`} />}
                 {loc.isStale && <T muted size={14}>{tr('لم يصل تحديث حديث من الباص؛ الموقع المعروض قد لا يكون الحالي.', 'No recent update; the shown position may not be current.')}</T>}
-                <Btn kind="secondary" title={tr('عرض الموقع على الخريطة', 'Show on map')} onPress={() => openInMaps(loc.lat, loc.lng, tr('الباص', 'Bus'))} />
+                <BusMap bus={loc} stop={trip.stop} />
+                <Btn kind="secondary" title={tr('فتح في تطبيق الخرائط', 'Open in Maps app')} onPress={() => openInMaps(loc.lat, loc.lng, tr('الباص', 'Bus'))} />
               </>
             ) : (
               <T muted>

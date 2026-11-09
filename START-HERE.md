@@ -131,6 +131,50 @@ npx expo run:ios
 
 ---
 
+## تحديث نسختك بعد أي تعديل جديد
+
+1. أوقف المشروع: اضغط `Ctrl+C` في نافذة `docker compose`.
+2. في PowerShell الصق هذا الأمر (ينزّل آخر نسخة ويستخرجها فوق القديمة ثم يشغّلها؛ بياناتك التجريبية تبقى):
+
+```powershell
+$dir = [Environment]::GetFolderPath('Desktop'); $zip = Join-Path $dir 'busna-update.zip'; Invoke-WebRequest https://github.com/alshyfybdr9-design/busna1/archive/refs/heads/busna-v2.zip -OutFile $zip; Expand-Archive $zip -DestinationPath $dir -Force; Set-Location (Join-Path $dir 'busna1-busna-v2'); docker compose up --build
+```
+
+3. لتطبيق الجوال (في نافذة أخرى) أعد تنزيل المكتبات ثم شغّل:
+
+```powershell
+cd $HOME\Desktop\busna1-busna-v2\apps\mobile
+```
+
+```powershell
+npm.cmd install
+```
+
+```powershell
+$ip = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.InterfaceAlias -notmatch 'vEthernet|Loopback|WSL|Docker' -and $_.IPAddress -notmatch '^(169\.|127\.|172\.)' } | Select-Object -First 1).IPAddress; $env:REACT_NATIVE_PACKAGER_HOSTNAME = $ip; npx.cmd expo start --clear
+```
+
+---
+
+## تفعيل «مساعد باصنا» (اختياري — يحتاج مفتاحًا)
+
+بدون مفتاح يعمل كل شيء: قاعدة المعرفة، التذاكر، والطوارئ؛ والمساعد يوضح أنه غير مفعّل ولا يخمّن.
+
+1. أنشئ حسابًا في https://console.anthropic.com وأنشئ **API Key** (الاستخدام مدفوع حسب الاستهلاك).
+2. في مجلد المشروع `busna1-busna-v2` أنشئ ملفًا اسمه `.env` (بدون اسم قبل النقطة) يحتوي:
+
+```
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=ضع_المفتاح_هنا
+```
+
+3. أعد التشغيل: `Ctrl+C` ثم `docker compose up --build`.
+
+> المفتاح يبقى في الخادم فقط ولا يصل للتطبيق أو المتصفح. لا ترسله في المحادثة ولا ترفعه إلى GitHub (الملف `.env` مستثنى من الرفع).
+> حدود الاستخدام اليومية لكل مستخدم وللجهة قابلة للضبط من: لوحة الويب ← الإعدادات ← مساعد باصنا.
+
+---
+
 ## مشاكل شائعة
 
 | المشكلة | الحل |

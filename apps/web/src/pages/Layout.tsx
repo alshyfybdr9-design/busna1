@@ -36,10 +36,13 @@ export function TenantLayout() {
             <NavLink to="/app/trips">{t('trips')}</NavLink>
             <NavLink to="/app/alerts">{t('alerts')}</NavLink>
             <NavLink to="/app/absences">{t('absences')}</NavLink>
+            <NavLink to="/app/support">{lang === 'ar' ? 'تذاكر الدعم' : 'Support tickets'}</NavLink>
+            <NavLink to="/app/assistant">{lang === 'ar' ? 'مساعد باصنا' : 'Assistant'}</NavLink>
             <NavLink to="/app/students">{t('students')}</NavLink>
             <NavLink to="/app/routes">{t('routes')}</NavLink>
             <NavLink to="/app/buses">{t('buses')}</NavLink>
             <NavLink to="/app/team">{t('team')}</NavLink>
+            <NavLink to="/app/knowledge">{lang === 'ar' ? 'قاعدة المعرفة' : 'Knowledge'}</NavLink>
             {isAdmin && <NavLink to="/app/settings">{t('settings')}</NavLink>}
             {isAdmin && <NavLink to="/app/audit">{t('audit')}</NavLink>}
           </nav>
@@ -85,6 +88,8 @@ export function PlatformLayout() {
         <div className="brand"><BrandMark /><span>{t('platformAdmin')}</span></div>
         <nav className="nav">
           <NavLink to="/platform" end>{t('tenants')}</NavLink>
+          <NavLink to="/platform/support">{lang === 'ar' ? 'تذاكر الدعم' : 'Support tickets'}</NavLink>
+          <NavLink to="/platform/knowledge">{lang === 'ar' ? 'دليل التطبيق' : 'App guide'}</NavLink>
           <NavLink to="/platform/health">{t('health')}</NavLink>
         </nav>
         <div className="sidebar-foot row small">

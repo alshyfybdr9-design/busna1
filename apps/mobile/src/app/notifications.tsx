@@ -11,7 +11,7 @@ export default function Notifications() {
     q.reload();
   }
   return (
-    <Screen>
+    <Screen onRefresh={q.refresh}>
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
       {q.data && q.data.notifications.length > 0 && <Btn kind="ghost" title={tr('تعليم الكل كمقروء', 'Mark all read')} onPress={markAll} />}

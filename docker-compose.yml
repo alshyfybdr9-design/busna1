@@ -35,6 +35,11 @@ services:
       APP_PUBLIC_URL: http://localhost:5173
       CORS_ORIGINS: http://localhost:5173
       PUSH_PROVIDER: none
+      # لتفعيل «مساعد باصنا»: ضع AI_PROVIDER=anthropic و ANTHROPIC_API_KEY=... في ملف .env بجانب هذا الملف
+      AI_PROVIDER: ${AI_PROVIDER:-none}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-claude-opus-5-5}
+      AI_EFFORT: ${AI_EFFORT:-medium}
       SEED_DEMO: ${SEED_DEMO:-true}
       SEED_PASSWORD: ${SEED_PASSWORD:-Demo-pass-2026}
     ports:
