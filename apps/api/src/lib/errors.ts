@@ -30,6 +30,10 @@ export const messages: Record<string, { ar: string; en: string }> = {
   absence_date_past: { ar: 'لا يمكن طلب غياب لتاريخ مضى', en: 'Cannot request absence for a past date' },
   rate_limited: { ar: 'طلبات كثيرة. حاول بعد قليل', en: 'Too many requests' },
   weak_password: { ar: 'كلمة المرور يجب ألا تقل عن 8 أحرف وتحتوي حروفًا وأرقامًا', en: 'Password must be 8+ chars with letters and digits' },
+  plan_limit_reached: { ar: 'تم الوصول إلى الحد المسموح في خطة اشتراك الجهة. تواصل مع إدارة منصة باصنا لترقية الخطة', en: 'Your organization reached its subscription plan limit' },
+  read_only_access: { ar: 'وصول الدعم المؤقت للقراءة فقط — لا يمكن إجراء تعديلات', en: 'Support access is read-only' },
+  support_access_disabled: { ar: 'هذه الجهة لا تسمح بوصول دعم المنصة إلى بياناتها', en: 'This organization does not allow platform support access' },
+  last_platform_admin: { ar: 'لا يمكن إزالة آخر مدير للمنصة', en: 'Cannot remove the last platform admin' },
   internal_error: { ar: 'حدث خطأ غير متوقع. حاول مرة أخرى', en: 'Unexpected error. Please try again' },
 };
 

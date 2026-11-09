@@ -32,8 +32,18 @@ async function listContexts(c: Db, userId: string) {
      order by t.name, m.role`,
     [userId],
   );
-  const u = await one<{ is_platform_admin: boolean }>(c, 'select is_platform_admin from users where id = $1', [userId]);
-  return { memberships, platformAdmin: !!u?.is_platform_admin };
+  const u = await one<{ platform_role: string | null }>(c, 'select platform_role from users where id = $1', [userId]);
+  // وصول دعم استثنائي نشط (مؤقت، قراءة فقط) — يظهر كخيار سياق لفريق المنصة فقط
+  const accessGrants = u?.platform_role
+    ? await many(
+        c,
+        `select g.id as "grantId", t.id as "tenantId", t.name as "tenantName", t.code::text as "tenantCode", g.expires_at as "expiresAt"
+         from platform_access_grants g join tenants t on t.id = g.tenant_id
+         where g.user_id = $1 and g.revoked_at is null and g.expires_at > now() order by g.expires_at desc`,
+        [userId],
+      )
+    : [];
+  return { memberships, platformAdmin: !!u?.platform_role, platformRole: u?.platform_role ?? null, accessGrants };
 }
 
 async function issueRefresh(c: Db, userId: string, familyId: string, userAgent?: string) {
@@ -51,12 +61,22 @@ async function issueRefresh(c: Db, userId: string, familyId: string, userAgent?:
 async function resolveCtx(
   c: Db,
   userId: string,
-  want: { membershipId?: string; platform?: boolean },
+  want: { membershipId?: string; platform?: boolean; accessGrantId?: string },
 ): Promise<AccessClaims['ctx']> {
   if (want.platform) {
-    const u = await one(c, `select 1 from users where id = $1 and is_platform_admin and status = 'active'`, [userId]);
+    const u = await one(c, `select 1 from users where id = $1 and platform_role is not null and status = 'active'`, [userId]);
     if (!u) throw new AppError(403, 'forbidden');
     return { kind: 'platform' };
+  }
+  if (want.accessGrantId) {
+    const g = await one(
+      c,
+      `select 1 from platform_access_grants g join users u on u.id = g.user_id
+       where g.id = $1 and g.user_id = $2 and g.revoked_at is null and g.expires_at > now() and u.platform_role is not null`,
+      [want.accessGrantId, userId],
+    );
+    if (!g) throw new AppError(403, 'forbidden');
+    return { kind: 'grant', gid: want.accessGrantId };
   }
   if (want.membershipId) {
     const m = await one(
@@ -161,7 +181,7 @@ export async function authRoutes(app: FastifyInstance) {
 
   app.post('/auth/refresh', strict, async (req) => {
     const body = parse(
-      z.object({ refreshToken: z.string().min(20).max(200), membershipId: z.string().uuid().optional(), platform: z.boolean().optional() }),
+      z.object({ refreshToken: z.string().min(20).max(200), membershipId: z.string().uuid().optional(), platform: z.boolean().optional(), accessGrantId: z.string().uuid().optional() }),
       req.body,
     );
     const out = await withAuthDb(async (c) => {
@@ -179,7 +199,14 @@ export async function authRoutes(app: FastifyInstance) {
       }
       const active = await one(c, `select 1 from users where id = $1 and status = 'active'`, [row.user_id]);
       if (!active) throw new AppError(401, 'unauthorized');
-      const ctx = await resolveCtx(c, row.user_id, { membershipId: body.membershipId, platform: body.platform });
+      // وصول استثنائي منتهٍ: نعيد المستخدم لسياق المنصة بدل إنهاء الجلسة
+      let ctx: AccessClaims['ctx'];
+      try {
+        ctx = await resolveCtx(c, row.user_id, { membershipId: body.membershipId, platform: body.platform, accessGrantId: body.accessGrantId });
+      } catch (e) {
+        if (!body.accessGrantId) throw e;
+        ctx = await resolveCtx(c, row.user_id, { platform: true });
+      }
       const next = await issueRefresh(c, row.user_id, row.family_id, req.headers['user-agent']);
       await c.query(`update refresh_tokens set revoked_at = now(), replaced_by = $2 where id = $1`, [row.id, next.id]);
       return { ok: await sessionPayload(c, row.user_id, ctx, next.token) } as const;
@@ -206,8 +233,8 @@ export async function authRoutes(app: FastifyInstance) {
 
   /** اختيار سياق (جهة + دور) — يتحقق الخادم من العضوية */
   app.post('/auth/context', { preHandler: requireAuth() }, async (req) => {
-    const body = parse(z.object({ membershipId: z.string().uuid().optional(), platform: z.boolean().optional() }), req.body);
-    if (!body.membershipId && !body.platform) throw badRequest();
+    const body = parse(z.object({ membershipId: z.string().uuid().optional(), platform: z.boolean().optional(), accessGrantId: z.string().uuid().optional() }), req.body);
+    if (!body.membershipId && !body.platform && !body.accessGrantId) throw badRequest();
     return withAuthDb(async (c) => {
       const ctx = await resolveCtx(c, req.ctx.userId, body);
       return { accessToken: await signAccessToken({ sub: req.ctx.userId, ctx }), accessTokenExpiresIn: config().ACCESS_TOKEN_TTL_SEC, context: ctx };
@@ -226,7 +253,16 @@ export async function authRoutes(app: FastifyInstance) {
        where i.token_hash = $1 ${lock ? 'for update of i' : ''}`,
       [sha256(token)],
     );
-    if (!inv || inv.accepted_at || inv.revoked_at || new Date(inv.expires_at) < new Date() || inv.tenant_status !== 'active') {
+    if (!inv) {
+      // دعوة للانضمام لفريق المنصة (مدير/دعم)
+      const p = await one(c, `select * from platform_invites where token_hash = $1 ${lock ? 'for update' : ''}`, [sha256(token)]);
+      if (!p || p.accepted_at || p.revoked_at || new Date(p.expires_at) < new Date()) throw new AppError(404, 'invite_invalid');
+      return {
+        ...p, platform: true, platform_role: p.role, role: `platform_${p.role}`, phone: null, student_ids: [],
+        tenant_name: 'منصة باصنا', tenant_name_en: 'Busna platform', logo_url: null, kind: 'platform', tenant_code: null,
+      };
+    }
+    if (inv.accepted_at || inv.revoked_at || new Date(inv.expires_at) < new Date() || inv.tenant_status !== 'active') {
       throw new AppError(404, 'invite_invalid');
     }
     return inv;
@@ -286,6 +322,17 @@ export async function authRoutes(app: FastifyInstance) {
           const matches = (inv.email && u.email?.toLowerCase() === String(inv.email).toLowerCase()) || (inv.phone && u.phone === inv.phone);
           if (!matches) throw new AppError(400, 'invite_email_mismatch');
         }
+      }
+      if (inv.platform) {
+        await c.query(`update users set platform_role = $2 where id = $1`, [userId, inv.platform_role]);
+        await c.query(`update platform_invites set accepted_at = now(), accepted_by = $2 where id = $1`, [inv.id, userId]);
+        await c.query(
+          `insert into audit_logs (actor_user_id, actor_role, action, entity, entity_id, details, ip)
+           values ($1, $2, 'platform_invite.accepted', 'platform_invite', $3, $4, $5)`,
+          [userId, inv.role, inv.id, JSON.stringify({ mode: body.mode }), req.ip],
+        );
+        const pr = await issueRefresh(c, userId, randomUUID(), req.headers['user-agent']);
+        return { ok: await sessionPayload(c, userId, { kind: 'platform' }, pr.token) } as const;
       }
       const m = await one<{ id: string }>(
         c,

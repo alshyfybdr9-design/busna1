@@ -65,6 +65,34 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     });
   });
 
+  // ---------------- الاشتراك ووصول دعم المنصة ----------------
+  app.get('/tenant/subscription', staff, async (req) =>
+    withCtx(req.ctx, async (c) => ({ subscription: await one(c, `select * from app.tenant_plan()`) })),
+  );
+
+  app.get('/tenant/support-access', admin, async (req) =>
+    withCtx(req.ctx, async (c) => ({
+      grants: await many(
+        c,
+        `select g.id, g.reason, g.created_at as "createdAt", g.expires_at as "expiresAt", g.revoked_at as "revokedAt",
+                (g.revoked_at is null and g.expires_at > now()) as active,
+                (select count(*) from audit_logs a where a.tenant_id = g.tenant_id and a.action = 'platform_access.view' and a.details->>'grantId' = g.id::text) as "viewsLogged"
+         from platform_access_grants g where g.tenant_id = $1 order by g.created_at desc limit 100`,
+        [req.ctx.tenantId],
+      ),
+    })),
+  );
+
+  app.post('/tenant/support-access/:id/revoke', admin, async (req) => {
+    const { id } = parse(idParam, req.params);
+    return withCtx(req.ctx, async (c) => {
+      const r = await c.query(`update platform_access_grants set revoked_at = now(), revoked_by = $2 where id = $1 and tenant_id = $3 and revoked_at is null`, [id, req.ctx.userId, req.ctx.tenantId]);
+      if (!r.rowCount) throw notFound();
+      await audit(c, req.ctx, 'platform_access.revoked_by_tenant', 'platform_access_grant', id);
+      return { ok: true };
+    });
+  });
+
   // ---------------- الأعضاء والدعوات ----------------
   app.get('/tenant/members', staff, async (req) => {
     const q = parse(z.object({ role: z.enum(['tenant_admin', 'supervisor', 'driver', 'parent']).optional() }), req.query);
@@ -118,6 +146,11 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     if (req.ctx.role === 'supervisor' && !['parent', 'driver'].includes(body.role)) throw new AppError(403, 'forbidden');
     if (body.studentIds.length && body.role !== 'parent') throw badRequest();
     return withCtx(req.ctx, async (c) => {
+      if (body.role === 'driver') {
+        // حد السائقين في الخطة: نمنع الدعوة مبكرًا بدل فشل قبولها لاحقًا
+        const plan = await one(c, `select max_drivers, drivers from app.tenant_plan()`);
+        if (plan?.max_drivers != null && plan.drivers >= plan.max_drivers) throw new AppError(409, 'plan_limit_reached', { kind: 'drivers' });
+      }
       if (body.studentIds.length) {
         const found = await one<{ n: number }>(c, `select count(*) as n from students where id = any($1::uuid[])`, [body.studentIds]);
         if (found!.n !== body.studentIds.length) throw notFound();

@@ -148,7 +148,7 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
       }
       // تذكرة جديدة أو رد من صاحبها ← فريق الطابور المسؤول (الجهة أو المنصة)
       const agents = t.queue === 'platform'
-        ? await many<{ user_id: string }>(c, `select id as user_id from users where is_platform_admin and status = 'active'`)
+        ? await many<{ user_id: string }>(c, `select id as user_id from users where platform_role is not null and status = 'active'`)
         : t.assigned_to && p.event === 'requester_reply' ? [{ user_id: t.assigned_to }] : await staffOf(c, ev.tenant_id);
       return {
         audience: 'ticket',
@@ -158,6 +158,20 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
           title: p.event === 'created' ? `تذكرة دعم جديدة #${t.ref}` : `رد جديد على التذكرة #${t.ref}`,
           body: String(t.subject).slice(0, 140),
           dedupeKey: `ticketq:${t.id}:${p.event}:${ev.id}`, data,
+        })),
+      };
+    }
+    case 'support_access': {
+      const g = await one(c, `select g.id, g.reason, g.expires_at, round(extract(epoch from g.expires_at - g.created_at) / 60) as minutes from platform_access_grants g where g.id = $1`, [p.grantId]);
+      if (!g) return { notes: [], audience: 'staff' };
+      const admins = await many<{ user_id: string }>(c, `select user_id from memberships where tenant_id = $1 and role = 'tenant_admin' and status = 'active'`, [ev.tenant_id]);
+      return {
+        audience: 'staff',
+        notes: admins.map((a) => ({
+          userId: a.user_id, kind: 'support_access',
+          title: 'وصول مؤقت من دعم منصة باصنا',
+          body: `فتح فريق دعم باصنا وصولًا للقراءة فقط لمدة ${g.minutes} دقيقة. السبب: ${String(g.reason).slice(0, 200)}. يمكنك إنهاؤه من الإعدادات.`,
+          dedupeKey: `support_access:${g.id}`, data: { grantId: g.id },
         })),
       };
     }

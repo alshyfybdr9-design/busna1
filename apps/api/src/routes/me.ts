@@ -8,7 +8,7 @@ import { parse, idParam } from '../lib/util.js';
 import { tenantSettings } from '../config.js';
 
 export async function meRoutes(app: FastifyInstance) {
-  const auth = { preHandler: requireAuth(['tenant_admin', 'supervisor', 'driver', 'parent', 'platform_admin']) };
+  const auth = { preHandler: requireAuth(['tenant_admin', 'supervisor', 'driver', 'parent', 'platform_admin', 'platform_support', 'platform_readonly']) };
 
   app.get('/me', auth, async (req) =>
     withCtx(req.ctx, async (c) => {
@@ -26,7 +26,11 @@ export async function meRoutes(app: FastifyInstance) {
         tenant = { ...t, settings: undefined, emergencyNumber: s.emergencyNumber, supportHours: s.supportHours, staleAfterSec: s.staleAfterSec };
       }
       const unread = await one(c, `select count(*) as n from notifications where read_at is null`);
-      return { user, role: req.ctx.role, membershipId: req.ctx.membershipId, tenant, unreadNotifications: unread.n };
+      let supportAccess = null;
+      if (req.ctx.grantId) {
+        supportAccess = await one(c, `select id, expires_at as "expiresAt", reason from platform_access_grants where id = $1`, [req.ctx.grantId]);
+      }
+      return { user, role: req.ctx.role, membershipId: req.ctx.membershipId, tenant, unreadNotifications: unread.n, supportAccess };
     }),
   );
 

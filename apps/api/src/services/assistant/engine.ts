@@ -161,7 +161,10 @@ export async function handleMessage(ctx: RequestContext, input: { conversationId
   if (!tenant.cfg.assistantEnabled) return fallback('disabled');
   if (!provider.configured) return fallback('not_configured');
   const usage = await withCtx(ctx, (c) => one(c, `select tenant_requests, user_requests from app.assistant_usage_today()`));
-  if (usage.user_requests >= tenant.cfg.assistantDailyLimitPerUser || usage.tenant_requests >= tenant.cfg.assistantDailyLimitTenant) {
+  // الحد الفعلي للجهة = الأقل بين إعداد الجهة وحد خطة الاشتراك
+  const plan = await withCtx(ctx, (c) => one(c, `select assistant_daily_limit from app.tenant_plan()`));
+  const tenantLimit = plan?.assistant_daily_limit != null ? Math.min(plan.assistant_daily_limit, tenant.cfg.assistantDailyLimitTenant) : tenant.cfg.assistantDailyLimitTenant;
+  if (usage.user_requests >= tenant.cfg.assistantDailyLimitPerUser || usage.tenant_requests >= tenantLimit) {
     return fallback('limit');
   }
 

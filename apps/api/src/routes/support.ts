@@ -11,7 +11,8 @@ import { enqueue } from '../services/outbox.js';
 import { loadTenant } from '../services/trips.js';
 
 const TENANT_ROLES: Role[] = ['tenant_admin', 'supervisor', 'driver', 'parent'];
-const ANY: Role[] = [...TENANT_ROLES, 'platform_admin'];
+const ANY: Role[] = [...TENANT_ROLES, 'platform_admin', 'platform_support'];
+const isPlatform = (r: Role) => r === 'platform_admin' || r === 'platform_support';
 
 const articleBody = z.object({
   title: z.string().trim().min(3).max(200),
@@ -37,8 +38,8 @@ export async function supportRoutes(app: FastifyInstance) {
       status: z.enum(['open', 'in_progress', 'waiting_user', 'resolved', 'closed', 'active']).optional(),
     }), req.query);
     return withCtx(req.ctx, async (c) => {
-      if (q.scope === 'mine' && req.ctx.role !== 'platform_admin') return { tickets: await listMyTickets(c, req.ctx, 100) };
-      if (!['tenant_admin', 'supervisor', 'platform_admin'].includes(req.ctx.role)) throw new AppError(403, 'forbidden');
+      if (q.scope === 'mine' && !isPlatform(req.ctx.role)) return { tickets: await listMyTickets(c, req.ctx, 100) };
+      if (!['tenant_admin', 'supervisor', 'platform_admin', 'platform_support', 'platform_readonly'].includes(req.ctx.role)) throw new AppError(403, 'forbidden');
       // RLS تعيد طابور الجهة للموظفين، وطابور المنصة لمدير المنصة
       const tickets = await many(
         c,
@@ -51,7 +52,7 @@ export async function supportRoutes(app: FastifyInstance) {
          where ($1::boolean or t.queue = 'tenant')
            and ($2::text is null or ($2 = 'active' and t.status in ('open', 'in_progress', 'waiting_user')) or t.status = $2)
          order by case t.priority when 'urgent' then 0 when 'high' then 1 else 2 end, t.last_activity_at desc limit 300`,
-        [req.ctx.role === 'platform_admin', q.status ?? null],
+        [isPlatform(req.ctx.role), q.status ?? null],
       );
       return { tickets };
     });
@@ -164,10 +165,10 @@ export async function supportRoutes(app: FastifyInstance) {
       ),
     }));
   app.get('/tenant/knowledge', { preHandler: requireAuth(['tenant_admin', 'supervisor']) }, kbList('true'));
-  app.get('/platform/knowledge', { preHandler: requireAuth(['platform_admin']) }, kbList('tenant_id is null'));
+  app.get('/platform/knowledge', { preHandler: requireAuth(['platform_admin', 'platform_support']) }, kbList('tenant_id is null'));
 
   for (const scope of ['tenant', 'platform'] as const) {
-    const auth = { preHandler: requireAuth([scope === 'tenant' ? 'tenant_admin' : 'platform_admin']) };
+    const auth = { preHandler: requireAuth(scope === 'tenant' ? ['tenant_admin'] : ['platform_admin', 'platform_support']) };
     app.post(`/${scope}/knowledge`, auth, async (req) => {
       const b = parse(articleBody, req.body);
       return withCtx(req.ctx, async (c) => {

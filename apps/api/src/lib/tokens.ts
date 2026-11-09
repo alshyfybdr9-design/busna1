@@ -4,7 +4,7 @@ import { config } from '../config.js';
 export interface AccessClaims {
   sub: string;
   /** سياق مختار: عضوية في جهة، أو منصة، أو لا شيء (قبل الاختيار) */
-  ctx: { kind: 'membership'; mid: string } | { kind: 'platform' } | { kind: 'none' };
+  ctx: { kind: 'membership'; mid: string } | { kind: 'platform' } | { kind: 'grant'; gid: string } | { kind: 'none' };
 }
 
 const key = () => new TextEncoder().encode(config().JWT_SECRET);

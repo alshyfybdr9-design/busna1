@@ -60,6 +60,7 @@ export const tenantSettingsSchema = z.object({
   emergencyNumber: z.string().max(20).default('911'),
   supportHours: z.string().max(200).nullable().default(null),
   assistantEnabled: z.boolean().default(true),
+  allowPlatformSupportAccess: z.boolean().default(true),
   assistantDailyLimitPerUser: z.number().int().min(0).max(500).default(30),
   assistantDailyLimitTenant: z.number().int().min(0).max(100000).default(1000),
   assistantRetentionDays: z.number().int().min(1).max(365).default(30),

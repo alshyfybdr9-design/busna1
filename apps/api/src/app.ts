@@ -21,6 +21,8 @@ function mapDbError(e: any): AppError | null {
   switch (e.code) {
     case '42501': // insufficient_privilege / RLS
       return new AppError(403, 'forbidden');
+    case '25006': // read_only_sql_transaction — وصول الدعم الاستثنائي
+      return new AppError(403, 'read_only_access');
     case 'P0001': // raise exception من المحفزات
       return new AppError(409, e.message && /^[a-z_]+$/.test(e.message) ? e.message : 'conflict');
     case 'P0002':

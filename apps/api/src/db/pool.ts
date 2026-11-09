@@ -32,16 +32,18 @@ export async function closePools() {
 /** سياق الطلب الموثّق — يُستخرج من الخادم فقط، لا من مدخلات المستخدم */
 export interface RequestContext {
   userId: string;
-  role: 'platform_admin' | 'tenant_admin' | 'supervisor' | 'driver' | 'parent' | 'none';
+  role: 'platform_admin' | 'platform_support' | 'platform_readonly' | 'tenant_admin' | 'supervisor' | 'driver' | 'parent' | 'none';
   tenantId: string | null;
   membershipId: string | null;
+  /** وصول دعم استثنائي (قراءة فقط) */
+  grantId?: string | null;
   ip?: string;
 }
 
-async function inTx<T>(pool: pg.Pool, setup: ((c: Db) => Promise<void>) | null, fn: (c: Db) => Promise<T>): Promise<T> {
+async function inTx<T>(pool: pg.Pool, setup: ((c: Db) => Promise<void>) | null, fn: (c: Db) => Promise<T>, readOnly = false): Promise<T> {
   const client = await pool.connect();
   try {
-    await client.query('begin');
+    await client.query(readOnly ? 'begin read only' : 'begin');
     if (setup) await setup(client);
     const result = await fn(client);
     await client.query('commit');
@@ -68,6 +70,8 @@ export function withCtx<T>(ctx: RequestContext, fn: (c: Db) => Promise<T>): Prom
       );
     },
     fn,
+    // وصول الدعم الاستثنائي: المعاملة نفسها للقراءة فقط — أي كتابة ترفضها قاعدة البيانات
+    ctx.role === 'platform_readonly',
   );
 }
 
