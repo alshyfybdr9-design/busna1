@@ -66,6 +66,7 @@ export function Settings() {
     <label className="row" style={{ marginBottom: 12 }}><input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={!!s[k]} onChange={(e) => setS(k, e.target.checked)} />{label}</label>
   );
   return (
+    <div className="stack">
     <div className="grid cols-2">
       <div className="card">
         <h2>{lang === 'ar' ? 'بيانات الجهة والشعار' : 'Organization & branding'}</h2>
@@ -99,6 +100,79 @@ export function Settings() {
         {save.isSuccess && <div className="alert info">✓</div>}
         <button className="btn" onClick={() => save.mutate()} disabled={save.isPending}>{t('save')}</button>
       </div>
+    </div>
+    <div className="grid cols-2">
+      <SubscriptionCard />
+      <SupportAccessCard allowed={s.allowPlatformSupportAccess} onToggle={(v) => setS('allowPlatformSupportAccess', v)} />
+    </div>
+    </div>
+  );
+}
+
+function Bar({ label, used, max }: { label: string; used: number; max: number | null }) {
+  const { lang } = useI18n();
+  const pct = max == null ? 0 : Math.min(100, Math.round((used / max) * 100));
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <div className="row between small"><span>{label}</span><span>{lang === 'ar' ? max == null ? `${used} (بلا حد)` : `${used} من ${max}` : `${used} / ${max ?? '∞'}`}</span></div>
+      {max != null && <div style={{ height: 8, background: 'var(--line)', borderRadius: 4 }}><div style={{ width: `${pct}%`, height: 8, borderRadius: 4, background: pct >= 100 ? 'var(--red)' : pct >= 80 ? 'var(--amber)' : 'var(--green-600)' }} /></div>}
+    </div>
+  );
+}
+
+/** الاشتراك في منصة باصنا واستهلاك الحدود */
+function SubscriptionCard() {
+  const { lang } = useI18n();
+  const q = useQuery({ queryKey: ['subscription'], queryFn: () => api('GET', '/tenant/subscription') });
+  const st: Record<string, string> = { trial: 'تجريبي', active: 'فعّال', past_due: 'متأخر السداد', cancelled: 'ملغى' };
+  const sub = q.data?.subscription;
+  return (
+    <div className="card">
+      <h2>{lang === 'ar' ? 'الاشتراك في منصة باصنا' : 'Busna subscription'}</h2>
+      {q.isLoading && <Loading />}
+      {q.error && <ErrorBox error={q.error} />}
+      {q.data && !sub && <Empty>{lang === 'ar' ? 'لا يوجد اشتراك مسجل. تواصل مع إدارة منصة باصنا.' : 'No subscription on file.'}</Empty>}
+      {sub && (
+        <>
+          <div className="row" style={{ marginBottom: 12 }}>
+            <strong>{sub.plan_name}</strong><span className="badge">{st[sub.status] ?? sub.status}</span>
+            {sub.current_period_end && <span className="small muted">{lang === 'ar' ? 'حتى' : 'until'} {sub.current_period_end}</span>}
+          </div>
+          <Bar label={lang === 'ar' ? 'الطلاب النشطون' : 'Active students'} used={sub.students} max={sub.max_students} />
+          <Bar label={lang === 'ar' ? 'الباصات' : 'Buses'} used={sub.buses} max={sub.max_buses} />
+          <Bar label={lang === 'ar' ? 'السائقون' : 'Drivers'} used={sub.drivers} max={sub.max_drivers} />
+          <div className="small muted">{lang === 'ar' ? `رسائل المساعد اليومية للجهة: ${sub.assistant_daily_limit ?? 'بلا حد'}. للترقية تواصل مع دعم منصة باصنا من «تذاكر الدعم».` : `Assistant daily messages: ${sub.assistant_daily_limit ?? 'unlimited'}. Contact Busna support to upgrade.`}</div>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** وصول دعم منصة باصنا لبيانات الجهة: شفافية كاملة وقدرة على الإنهاء أو المنع */
+function SupportAccessCard({ allowed, onToggle }: { allowed: boolean; onToggle: (v: boolean) => void }) {
+  const { lang } = useI18n();
+  const qc = useQueryClient();
+  const q = useQuery({ queryKey: ['support-access'], queryFn: () => api('GET', '/tenant/support-access') });
+  const revoke = useMutation({ mutationFn: (id: string) => api('POST', `/tenant/support-access/${id}/revoke`, {}), onSuccess: () => qc.invalidateQueries({ queryKey: ['support-access'] }) });
+  return (
+    <div className="card">
+      <h2>{lang === 'ar' ? 'وصول دعم منصة باصنا' : 'Busna support access'}</h2>
+      <p className="small muted">{lang === 'ar' ? 'عند حاجة فريق دعم باصنا للاطلاع على بياناتكم لحل مشكلة، يفتح وصولًا مؤقتًا (ساعة كحد أقصى) للقراءة فقط وبسبب مكتوب. يصلكم إشعار، وتُسجَّل كل صفحة في سجل التدقيق.' : 'Temporary, read-only, reasoned and audited access by Busna support.'}</p>
+      <label className="row" style={{ marginBottom: 12 }}>
+        <input type="checkbox" style={{ width: 'auto', minHeight: 0 }} checked={allowed} onChange={(e) => onToggle(e.target.checked)} />
+        {lang === 'ar' ? 'السماح لدعم المنصة بطلب وصول مؤقت (احفظ الإعدادات بعد التغيير)' : 'Allow platform support to request temporary access (save settings)'}
+      </label>
+      {q.data && (q.data.grants.length === 0 ? <Empty>{lang === 'ar' ? 'لم يحدث أي وصول.' : 'No access so far.'}</Empty> : (
+        <table><tbody>{q.data.grants.map((g: any) => (
+          <tr key={g.id}>
+            <td className="small">{g.reason}<div className="muted">{fmtDateTime(g.createdAt, lang)} · {g.viewsLogged} {lang === 'ar' ? 'صفحة مسجلة' : 'pages logged'}</div></td>
+            <td>{g.active
+              ? <button className="btn sm danger" onClick={() => revoke.mutate(g.id)}>{lang === 'ar' ? 'إنهاء الآن' : 'End now'}</button>
+              : <span className="badge gray">{g.revokedAt ? (lang === 'ar' ? 'أُنهي' : 'revoked') : (lang === 'ar' ? 'انتهى' : 'expired')}</span>}</td>
+          </tr>
+        ))}</tbody></table>
+      ))}
+      {revoke.error && <ErrorBox error={revoke.error} />}
     </div>
   );
 }

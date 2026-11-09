@@ -15,7 +15,7 @@ import { Trips, TripDetail } from './pages/tenant/Trips';
 import { Alerts } from './pages/tenant/Alerts';
 import { Team } from './pages/tenant/Team';
 import { Absences, Settings, Audit } from './pages/tenant/Misc';
-import { PlatformTenants, PlatformHealth } from './pages/platform/Platform';
+import { PlatformTenants, PlatformHealth, PlatformPlans, PlatformStaff, PlatformAccessLog } from './pages/platform/Platform';
 import { Loading } from './components/ui';
 import { TicketsPage, TicketDetailPage } from './pages/support/Tickets';
 import { KnowledgePage } from './pages/support/Knowledge';
@@ -77,6 +77,9 @@ createRoot(document.getElementById('root')!).render(
                 <Route path="/platform" element={<PlatformLayout />}>
                   <Route index element={<PlatformTenants />} />
                   <Route path="health" element={<PlatformHealth />} />
+                  <Route path="plans" element={<PlatformPlans />} />
+                  <Route path="staff" element={<PlatformStaff />} />
+                  <Route path="access" element={<PlatformAccessLog />} />
                   <Route path="support" element={<TicketsPage base="/platform/support" platform />} />
                   <Route path="support/:id" element={<TicketDetailPage base="/platform/support" />} />
                   <Route path="knowledge" element={<KnowledgePage scope="platform" canEdit />} />

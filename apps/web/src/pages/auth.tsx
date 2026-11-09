@@ -10,6 +10,7 @@ const APP_SCHEME = (import.meta.env.VITE_APP_SCHEME as string | undefined) ?? 'b
 
 function homeFor(s: Session) {
   if (s.context.kind === 'platform') return '/platform';
+  if (s.context.kind === 'grant') return '/app';
   if (s.context.kind === 'membership') {
     const mid = s.context.mid;
     const m = s.contexts.memberships.find((x) => x.membershipId === mid);
@@ -183,7 +184,7 @@ export function InvitePage() {
             <TenantHeader tenant={inv.tenant} />
             <p>
               {lang === 'ar' ? 'دعوة للانضمام بدور: ' : 'You are invited as: '}
-              <strong>{t(`role_${inv.role}` as any)}</strong>
+              <strong>{inv.role === 'platform_support' ? (lang === 'ar' ? 'دعم منصة باصنا' : 'Busna platform support') : t(`role_${inv.role}` as any)}</strong>
             </p>
             {mobileRole && (
               <div className="alert info" style={{ marginBottom: 12 }}>
@@ -243,7 +244,7 @@ export function ContextPicker() {
     if (ready && !session) nav('/', { replace: true });
   }, [ready, session, nav]);
   if (!session) return <div className="center-page"><Loading /></div>;
-  async function pick(want: { membershipId?: string; platform?: boolean }) {
+  async function pick(want: { membershipId?: string; platform?: boolean; accessGrantId?: string }) {
     try {
       const s = await selectContext(want);
       if (s) nav(params.get('next') ?? homeFor(s));
@@ -258,13 +259,18 @@ export function ContextPicker() {
         {err != null && <ErrorBox error={err} />}
         {session.contexts.platformAdmin && (
           <button className="btn secondary" style={{ width: '100%', justifyContent: 'space-between' }} onClick={() => pick({ platform: true })}>
-            <span>{t('platformAdmin')}</span><span className="badge">{t('role_platform_admin')}</span>
+            <span>{t('platformAdmin')}</span><span className="badge">{session.contexts.platformRole === 'support' ? (lang === 'ar' ? 'دعم المنصة' : 'Platform support') : t('role_platform_admin')}</span>
           </button>
         )}
         {session.contexts.memberships.map((m) => (
           <button key={m.membershipId} className="btn secondary" style={{ width: '100%', justifyContent: 'space-between' }} onClick={() => pick({ membershipId: m.membershipId })}>
             <span>{lang === 'en' && m.tenantNameEn ? m.tenantNameEn : m.tenantName}</span>
             <span className="badge">{t(`role_${m.role}` as any)}</span>
+          </button>
+        ))}
+        {(session.contexts.accessGrants ?? []).map((g) => (
+          <button key={g.grantId} className="btn secondary" style={{ width: '100%', justifyContent: 'space-between' }} onClick={() => pick({ accessGrantId: g.grantId })}>
+            <span>{g.tenantName}</span><span className="badge amber">{lang === 'ar' ? 'وصول دعم مؤقت — قراءة فقط' : 'Temporary support access'}</span>
           </button>
         ))}
         {!session.contexts.platformAdmin && session.contexts.memberships.length === 0 && (

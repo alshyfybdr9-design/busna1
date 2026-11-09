@@ -22,3 +22,18 @@ export function currentMembership(s: Session | null) {
   const mid = s.context.mid;
   return s.contexts.memberships.find((m) => m.membershipId === mid) ?? null;
 }
+
+/** سياق الجهة الحالي: عضوية عادية، أو وصول دعم مؤقت (قراءة فقط) لفريق المنصة */
+export function currentTenantContext(s: Session | null) {
+  if (!s) return null;
+  if (s.context.kind === 'membership') {
+    const m = currentMembership(s);
+    return m ? { role: m.role, tenantName: m.tenantName, tenantNameEn: m.tenantNameEn, id: m.membershipId, readOnly: false, expiresAt: null as string | null } : null;
+  }
+  if (s.context.kind === 'grant') {
+    const gid = s.context.gid;
+    const g = s.contexts.accessGrants?.find((x) => x.grantId === gid);
+    return g ? { role: 'platform_readonly', tenantName: g.tenantName, tenantNameEn: null, id: g.grantId, readOnly: true, expiresAt: g.expiresAt } : null;
+  }
+  return null;
+}

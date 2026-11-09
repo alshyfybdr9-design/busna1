@@ -5,7 +5,7 @@ export class ApiError extends Error {
   }
 }
 
-export type Ctx = { kind: 'membership'; mid: string } | { kind: 'platform' } | { kind: 'none' };
+export type Ctx = { kind: 'membership'; mid: string } | { kind: 'platform' } | { kind: 'grant'; gid: string } | { kind: 'none' };
 
 export interface Session {
   accessToken: string;
@@ -15,6 +15,8 @@ export interface Session {
   contexts: {
     memberships: Array<{ membershipId: string; role: string; tenantId: string; tenantName: string; tenantNameEn: string | null; tenantCode: string; logoUrl: string | null }>;
     platformAdmin: boolean;
+    platformRole: 'admin' | 'support' | null;
+    accessGrants: Array<{ grantId: string; tenantId: string; tenantName: string; tenantCode: string; expiresAt: string }>;
   };
 }
 
@@ -72,7 +74,7 @@ async function raw<T>(method: string, path: string, body?: unknown, token?: stri
   return json as T;
 }
 
-export async function refreshSession(want?: { membershipId?: string; platform?: boolean }): Promise<Session | null> {
+export async function refreshSession(want?: { membershipId?: string; platform?: boolean; accessGrantId?: string }): Promise<Session | null> {
   if (refreshing) return refreshing;
   refreshing = (async () => {
     let rt: string | null = null;
@@ -84,7 +86,7 @@ export async function refreshSession(want?: { membershipId?: string; platform?: 
       /* ignore */
     }
     if (!rt) return null;
-    const target = want ?? (ctx.kind === 'membership' ? { membershipId: ctx.mid } : ctx.kind === 'platform' ? { platform: true } : {});
+    const target = want ?? (ctx.kind === 'membership' ? { membershipId: ctx.mid } : ctx.kind === 'platform' ? { platform: true } : ctx.kind === 'grant' ? { accessGrantId: ctx.gid } : {});
     try {
       const s = await raw<Session>('POST', '/auth/refresh', { refreshToken: rt, ...target });
       store(s);
@@ -123,7 +125,7 @@ export async function acceptInvite(token: string, body: Record<string, unknown>)
   return s;
 }
 
-export async function selectContext(want: { membershipId?: string; platform?: boolean }) {
+export async function selectContext(want: { membershipId?: string; platform?: boolean; accessGrantId?: string }) {
   return refreshSession(want);
 }
 
