@@ -6,16 +6,18 @@ import { Btn, Card, Loading, Screen, T, useLang } from '../components/ui';
 import { WEB_URL } from '../lib/config';
 
 export default function Index() {
-  const { session, ready, offlineStart, retry } = useSession();
+  const { session, ready, offlineStart, offlineError, retry } = useSession();
   const { tr } = useLang();
   if (!ready) return <Loading />;
   if (!session && offlineStart) {
     return (
       <Screen>
         <Card>
-          <T bold size={18}>{tr('لا يوجد اتصال بالإنترنت', 'No internet connection')}</T>
-          <T muted>{tr('تعذر التحقق من حسابك. اتصل بالإنترنت ثم أعد المحاولة.', 'Could not verify your account. Connect and retry.')}</T>
+          <T bold size={18}>{tr('تعذر الوصول إلى الخادم', 'Cannot reach the server')}</T>
+          <T muted>{tr('تعذر التحقق من حسابك. تأكد من الإنترنت ثم أعد المحاولة.', 'Could not verify your account. Check your connection and retry.')}</T>
+          {__DEV__ && offlineError && <T muted size={12}>{offlineError}</T>}
           <Btn title={tr('إعادة المحاولة', 'Retry')} onPress={retry} />
+          <Btn kind="ghost" title={tr('تسجيل الخروج', 'Sign out')} onPress={() => logout()} />
         </Card>
       </Screen>
     );
