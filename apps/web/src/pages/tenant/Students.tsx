@@ -7,30 +7,64 @@ import { useI18n, fmtDateTime } from '../../i18n';
 import { Empty, ErrorBox, Loading, Modal } from '../../components/ui';
 import { InviteResult } from './Team';
 
+function savedView(): 'table' | 'cards' {
+  try { return localStorage.getItem('busna.studentsView') === 'cards' ? 'cards' : 'table'; } catch { return 'table'; }
+}
+
 export function Students() {
   const { t, lang } = useI18n();
   const qc = useQueryClient();
   const [q, setQ] = useState('');
   const [adding, setAdding] = useState(false);
+  const [view, setView] = useState<'table' | 'cards'>(savedView);
   const list = useQuery({ queryKey: ['students', q], queryFn: () => api('GET', `/tenant/students${q ? `?q=${encodeURIComponent(q)}` : ''}`) });
+  const me = useQuery({ queryKey: ['me-lite'], queryFn: () => api('GET', '/me') });
+  const switchView = (v: 'table' | 'cards') => {
+    setView(v);
+    try { localStorage.setItem('busna.studentsView', v); } catch { /* اختياري */ }
+  };
+  const active = (list.data?.students ?? []).filter((s: any) => s.status === 'active');
   return (
     <div className="card">
-      <div className="row between">
+      <div className="row between no-print">
         <h2>{t('students')}</h2>
         <div className="row">
-          <input placeholder={t('search')} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 220 }} />
+          <div className="seg" role="group" aria-label={lang === 'ar' ? 'طريقة العرض' : 'View'}>
+            <button className={view === 'table' ? 'on' : ''} onClick={() => switchView('table')}>{lang === 'ar' ? 'جدول' : 'Table'}</button>
+            <button className={view === 'cards' ? 'on' : ''} onClick={() => switchView('cards')}>{lang === 'ar' ? 'البطاقات' : 'Cards'}</button>
+          </div>
+          <input placeholder={t('search')} value={q} onChange={(e) => setQ(e.target.value)} style={{ width: 200 }} />
+          {view === 'cards' && active.length > 0 && <button className="btn secondary" onClick={() => window.print()}>{lang === 'ar' ? `طباعة البطاقات (${active.length})` : `Print cards (${active.length})`}</button>}
           <button className="btn" onClick={() => setAdding(true)}>+ {t('add')}</button>
         </div>
       </div>
       {list.isLoading && <Loading />}
       {list.error && <ErrorBox error={list.error} onRetry={() => list.refetch()} />}
-      {list.data && (list.data.students.length === 0 ? <Empty /> : (
+      {list.data && view === 'cards' && (active.length === 0 ? <Empty /> : (
+        <>
+          <p className="small muted no-print">{lang === 'ar'
+            ? 'كل بطاقة تحمل رمزًا عشوائيًا لا يحتوي بيانات شخصية، والاسم الأول فقط. السائق يمسحها للتعرف على الطالب ثم يؤكد بنفسه.'
+            : 'Each card holds a random code (no personal data) and the first name only. The driver scans it, then confirms.'}</p>
+          <div className="cards-grid">
+            {active.map((s: any) => (
+              <div key={s.id} className="card-cell">
+                <QrCard studentName={s.fullName} token={s.qrToken} tenantName={me.data?.tenant?.name ?? ''} grade={s.grade}
+                  route={s.routes?.find((r: any) => r.direction === 'to_school')?.routeName ?? s.routes?.[0]?.routeName} />
+                <div className="small no-print" style={{ textAlign: 'center' }}><Link to={`/app/students/${s.id}`}>{s.fullName}</Link>
+                  {s.requiresHandover && <> · <span className="badge amber">{lang === 'ar' ? 'تسليم آمن' : 'Safe handover'}</span></>}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      ))}
+      {list.data && view === 'table' && (list.data.students.length === 0 ? <Empty /> : (
         <div className="table-wrap"><table>
           <thead><tr><th>{lang === 'ar' ? 'الاسم' : 'Name'}</th><th>{lang === 'ar' ? 'الصف' : 'Grade'}</th><th>{t('routes')}</th><th>{lang === 'ar' ? 'أولياء الأمور' : 'Guardians'}</th><th></th></tr></thead>
           <tbody>
             {list.data.students.map((s: any) => (
               <tr key={s.id}>
-                <td><Link to={`/app/students/${s.id}`}>{s.fullName}</Link>{s.status !== 'active' && <span className="badge gray"> {s.status}</span>}</td>
+                <td><Link to={`/app/students/${s.id}`}>{s.fullName}</Link>{s.status !== 'active' && <span className="badge gray"> {s.status}</span>}
+                  {s.requiresHandover && <span className="badge amber" title={lang === 'ar' ? 'لا يُنزَّل في رحلة العودة إلا لمستلم مصرّح له' : 'Handed only to an authorized receiver'}> {lang === 'ar' ? 'تسليم آمن' : 'Safe handover'}</span>}</td>
                 <td>{s.grade ?? '—'}</td>
                 <td>{s.routes?.length ? s.routes.map((r: any) => <div key={r.routeId} className="small">{r.routeName} · {r.stopName}</div>) : <span className="badge amber">{lang === 'ar' ? 'غير معيّن' : 'Unassigned'}</span>}</td>
                 <td>{s.guardianCount || <span className="badge amber">0</span>}</td>
@@ -48,9 +82,10 @@ export function Students() {
 function StudentForm({ initial, onClose, onSaved }: { initial?: any; onClose: () => void; onSaved: (id: string) => void }) {
   const { t, lang } = useI18n();
   const [f, setF] = useState({ fullName: initial?.fullName ?? '', grade: initial?.grade ?? '', schoolName: initial?.schoolName ?? '', studentCode: initial?.studentCode ?? '', notes: initial?.notes ?? '' });
+  const [handover, setHandover] = useState<boolean>(!!initial?.requiresHandover);
   const m = useMutation({
     mutationFn: () => {
-      const body = Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim() || null]));
+      const body = { ...Object.fromEntries(Object.entries(f).map(([k, v]) => [k, v.trim() || null])), requiresHandover: handover };
       return initial ? api('PATCH', `/tenant/students/${initial.id}`, body) : api('POST', '/tenant/students', body);
     },
     onSuccess: (r: any) => onSaved(r.student?.id ?? initial?.id),
@@ -66,6 +101,11 @@ function StudentForm({ initial, onClose, onSaved }: { initial?: any; onClose: ()
         </div>
         <div className="field"><label>{lang === 'ar' ? 'المدرسة (لشركات النقل)' : 'School (for transport companies)'}</label><input value={f.schoolName} onChange={set('schoolName')} /></div>
         <div className="field"><label>{lang === 'ar' ? 'ملاحظات للإدارة (لا تظهر للسائق)' : 'Admin notes (hidden from driver)'}</label><textarea rows={2} value={f.notes} onChange={set('notes')} /></div>
+        <label className="row" style={{ marginBottom: 4, alignItems: 'flex-start' }}>
+          <input type="checkbox" style={{ width: 'auto', minHeight: 0, marginTop: 5 }} checked={handover} onChange={(e) => setHandover(e.target.checked)} />
+          <span>{lang === 'ar' ? 'تسليم آمن (للصغار): في رحلة العودة لا يُنزَّل الطالب إلا بعد أن يحدد السائق من استلمه من أولياء الأمور أو المصرّح لهم' : 'Safe handover (young students): on the way home, drop-off requires choosing who received the child'}</span>
+        </label>
+        <p className="hint" style={{ marginTop: 0 }}>{lang === 'ar' ? 'يدعم اشتراط عدم مغادرة السائق قبل التأكد من دخول الطالب المنزل.' : 'Supports the rule that drivers must not leave before the child is safely received.'}</p>
         {m.error && <ErrorBox error={m.error} />}
         <button className="btn" disabled={m.isPending}>{t('save')}</button>
       </form>
@@ -73,7 +113,7 @@ function StudentForm({ initial, onClose, onSaved }: { initial?: any; onClose: ()
   );
 }
 
-function QrCard({ studentName, token, tenantName }: { studentName: string; token: string; tenantName: string }) {
+function QrCard({ studentName, token, tenantName, grade, route }: { studentName: string; token: string; tenantName: string; grade?: string | null; route?: string | null }) {
   const [src, setSrc] = useState('');
   useEffect(() => {
     // البطاقة تحمل رمزًا عشوائيًا فقط — بدون اسم أو رقم هوية داخل الرمز
@@ -83,7 +123,8 @@ function QrCard({ studentName, token, tenantName }: { studentName: string; token
     <div className="qr-card">
       <div style={{ fontWeight: 700 }}>{tenantName}</div>
       {src && <img src={src} alt="QR" />}
-      <div>{studentName.split(' ')[0]}</div>
+      <div style={{ fontWeight: 700, fontSize: '1.1rem' }}>{studentName.split(' ')[0]}</div>
+      {(grade || route) && <div className="small">{[grade, route].filter(Boolean).join(' · ')}</div>}
       <div className="small muted">بطاقة نقل — معرّف مساعد فقط</div>
     </div>
   );
@@ -102,7 +143,7 @@ export function StudentDetail() {
   const rotate = useMutation({ mutationFn: () => api('POST', `/tenant/students/${id}/rotate-qr`), onSuccess: () => qc.invalidateQueries({ queryKey: ['student', id] }) });
   if (q.isLoading) return <Loading />;
   if (q.error) return <ErrorBox error={q.error} />;
-  const { student, guardians, routes, pendingInvites } = q.data;
+  const { student, guardians, routes, pendingInvites, pickups, stopChanges } = q.data;
   return (
     <div className="stack">
       <Link to="/app/students">← {t('students')}</Link>
@@ -115,6 +156,7 @@ export function StudentDetail() {
           </div>
         </div>
         <div className="muted">{student.grade ?? ''} {student.schoolName ? `· ${student.schoolName}` : ''} {student.studentCode ? `· #${student.studentCode}` : ''}</div>
+        {student.requiresHandover && <div style={{ marginTop: 6 }}><span className="badge amber">{lang === 'ar' ? 'تسليم آمن مفعّل: لا يُنزَّل في رحلة العودة إلا لمستلم مصرّح له' : 'Safe handover on'}</span></div>}
         {student.notes && <p className="small">{student.notes}</p>}
       </div>
       <div className="grid cols-2">
@@ -140,6 +182,22 @@ export function StudentDetail() {
           )}
         </div>
       </div>
+      <div className="grid cols-2">
+        <PickupsCard studentId={id} pickups={pickups} guardians={guardians} requiresHandover={student.requiresHandover} />
+        <div className="card">
+          <h3>{lang === 'ar' ? 'طلبات تغيير العنوان' : 'Address change requests'}</h3>
+          {stopChanges.length === 0 ? <Empty>{lang === 'ar' ? 'لا توجد طلبات' : 'No requests'}</Empty> : (
+            <table><tbody>{stopChanges.map((r: any) => (
+              <tr key={r.id}>
+                <td>{r.kind === 'temporary' ? (lang === 'ar' ? 'مؤقت' : 'Temporary') : (lang === 'ar' ? 'دائم' : 'Permanent')}<div className="small muted">{r.startDate}{r.endDate ? ` ← ${r.endDate}` : ''}</div></td>
+                <td>{r.address}</td>
+                <td><StatusBadge status={r.status} /></td>
+              </tr>
+            ))}</tbody></table>
+          )}
+          <Link className="small" to="/app/requests">{lang === 'ar' ? 'كل الطلبات ←' : 'All requests →'}</Link>
+        </div>
+      </div>
       <div className="small muted">{lang === 'ar' ? 'أُضيف' : 'Created'}: {fmtDateTime(student.createdAt, lang)}</div>
       {editing && <StudentForm initial={student} onClose={() => setEditing(false)} onSaved={() => { setEditing(false); qc.invalidateQueries({ queryKey: ['student', id] }); }} />}
       {inviting && <InviteResult role="parent" studentIds={[id]} defaultName="" onClose={() => { setInviting(false); qc.invalidateQueries({ queryKey: ['student', id] }); }} />}
@@ -153,6 +211,65 @@ export function StudentDetail() {
               <button className="btn secondary" onClick={() => confirm(lang === 'ar' ? 'سيتوقف الرمز القديم عن العمل. متابعة؟' : 'Old card will stop working. Continue?') && rotate.mutate()}>{lang === 'ar' ? 'إصدار رمز جديد' : 'Rotate code'}</button>
             </div>
           </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+export function StatusBadge({ status }: { status: string }) {
+  const { lang } = useI18n();
+  const map: Record<string, [string, string, string]> = {
+    pending: ['amber', 'بانتظار المراجعة', 'Pending'], approved: ['', 'معتمد', 'Approved'],
+    rejected: ['red', 'مرفوض', 'Rejected'], cancelled: ['gray', 'ملغى', 'Cancelled'],
+  };
+  const [cls, ar, en] = map[status] ?? ['gray', status, status];
+  return <span className={`badge ${cls}`}>{lang === 'ar' ? ar : en}</span>;
+}
+
+function PickupsCard({ studentId, pickups, guardians, requiresHandover }: { studentId: string; pickups: any[]; guardians: any[]; requiresHandover: boolean }) {
+  const { lang } = useI18n();
+  const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
+  const [f, setF] = useState({ fullName: '', relationship: '', phone: '' });
+  const inv = () => qc.invalidateQueries({ queryKey: ['student', studentId] });
+  const add = useMutation({
+    mutationFn: () => api('POST', `/tenant/students/${studentId}/pickups`, { fullName: f.fullName, relationship: f.relationship || null, phone: f.phone || null }),
+    onSuccess: () => { setAdding(false); setF({ fullName: '', relationship: '', phone: '' }); inv(); },
+  });
+  const revoke = useMutation({ mutationFn: (id: string) => api('POST', `/tenant/pickups/${id}/revoke`), onSuccess: inv });
+  return (
+    <div className="card">
+      <div className="row between">
+        <h3>{lang === 'ar' ? 'المصرّح لهم باستلام الطالب' : 'Authorized pickups'}</h3>
+        <button className="btn sm" onClick={() => setAdding(true)}>+ {lang === 'ar' ? 'إضافة' : 'Add'}</button>
+      </div>
+      <p className="small muted">{requiresHandover
+        ? (lang === 'ar' ? 'أولياء الأمور المرتبطون مصرّح لهم تلقائيًا. يستطيع ولي الأمر أيضًا إضافة أشخاص من التطبيق.' : 'Linked guardians are authorized automatically. Parents can add people from the app.')
+        : (lang === 'ar' ? 'التسليم الآمن غير مفعّل لهذا الطالب؛ القائمة تُستخدم عند تفعيله.' : 'Safe handover is off; this list is used when it is enabled.')}</p>
+      <table><tbody>
+        {guardians.map((g: any) => <tr key={g.userId}><td>{g.fullName}</td><td className="small muted">{lang === 'ar' ? 'ولي أمر' : 'Guardian'}</td><td></td></tr>)}
+        {pickups.map((p: any) => (
+          <tr key={p.id}>
+            <td>{p.fullName}<div className="small muted" dir="ltr">{p.phone ?? ''}</div></td>
+            <td className="small muted">{p.relationship ?? '—'}{p.addedBy ? ` · ${lang === 'ar' ? 'أضافه' : 'by'} ${p.addedBy}` : ''}</td>
+            <td><button className="btn sm ghost" onClick={() => confirm(lang === 'ar' ? 'إلغاء التصريح؟' : 'Revoke?') && revoke.mutate(p.id)}>{lang === 'ar' ? 'إلغاء' : 'Revoke'}</button></td>
+          </tr>
+        ))}
+      </tbody></table>
+      {revoke.error && <ErrorBox error={revoke.error} />}
+      {adding && (
+        <Modal title={lang === 'ar' ? 'إضافة شخص مصرّح له' : 'Add authorized pickup'} onClose={() => setAdding(false)}>
+          <form onSubmit={(e: FormEvent) => { e.preventDefault(); add.mutate(); }}>
+            <div className="field"><label>{lang === 'ar' ? 'الاسم الكامل *' : 'Full name *'}</label><input value={f.fullName} onChange={(e) => setF({ ...f, fullName: e.target.value })} required minLength={2} /></div>
+            <div className="row">
+              <div className="field" style={{ flex: 1 }}><label>{lang === 'ar' ? 'صلة القرابة' : 'Relationship'}</label><input value={f.relationship} onChange={(e) => setF({ ...f, relationship: e.target.value })} /></div>
+              <div className="field" style={{ flex: 1 }}><label>{lang === 'ar' ? 'الجوال' : 'Phone'}</label><input dir="ltr" value={f.phone} onChange={(e) => setF({ ...f, phone: e.target.value })} /></div>
+            </div>
+            <p className="hint">{lang === 'ar' ? 'يرى السائق الاسم وصلة القرابة فقط عند التسليم.' : 'The driver sees only the name and relationship.'}</p>
+            {add.error && <ErrorBox error={add.error} />}
+            <button className="btn" disabled={add.isPending}>{lang === 'ar' ? 'حفظ' : 'Save'}</button>
+          </form>
         </Modal>
       )}
     </div>

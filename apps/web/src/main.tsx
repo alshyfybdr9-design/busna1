@@ -15,6 +15,8 @@ import { Trips, TripDetail } from './pages/tenant/Trips';
 import { Alerts } from './pages/tenant/Alerts';
 import { Team } from './pages/tenant/Team';
 import { Absences, Settings, Audit } from './pages/tenant/Misc';
+import { Messages } from './pages/tenant/Messages';
+import { StopChangeRequests } from './pages/tenant/Requests';
 import { PlatformTenants, PlatformHealth, PlatformPlans, PlatformStaff, PlatformAccessLog } from './pages/platform/Platform';
 import { Loading } from './components/ui';
 import { TicketsPage, TicketDetailPage } from './pages/support/Tickets';
@@ -66,6 +68,8 @@ createRoot(document.getElementById('root')!).render(
                   <Route path="trips/:id" element={<TripDetail />} />
                   <Route path="alerts" element={<Alerts />} />
                   <Route path="absences" element={<Absences />} />
+                  <Route path="messages" element={<Messages />} />
+                  <Route path="requests" element={<StopChangeRequests />} />
                   <Route path="team" element={<Team />} />
                   <Route path="settings" element={<Settings />} />
                   <Route path="audit" element={<Audit />} />

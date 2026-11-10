@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { Pressable, View } from 'react-native';
 import { api } from '../../lib/session';
-import { AccountActions, usePushRegistration } from '../../components/common';
+import { AccountActions, MessagesCard, usePushRegistration } from '../../components/common';
 import { C, Card, DIR_LABEL, ErrorView, Loading, Pill, Screen, T, TRIP_LABEL, s, timeText, useLang, usePolling } from '../../components/ui';
 
 export default function DriverHome() {
@@ -12,6 +12,7 @@ export default function DriverHome() {
     <Screen onRefresh={q.refresh}>
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
+      <MessagesCard messages={q.data?.messages} />
       {q.data && q.data.trips.length === 0 && (
         <Card><T muted>{tr('لا توجد رحلات معيّنة لك اليوم.', 'No trips assigned to you today.')}</T></Card>
       )}

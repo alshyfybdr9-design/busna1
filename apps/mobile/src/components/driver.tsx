@@ -51,3 +51,45 @@ export function ReportSheet({ visible, onClose, tripId, safety }: { visible: boo
   );
 }
 
+
+export type Receiver = { kind: 'guardian' | 'authorized'; refId: string; fullName: string; relationship: string | null };
+
+/**
+ * التسليم الآمن: عند نزول طالب صغير في رحلة العودة يختار السائق من استلمه.
+ * إن لم يوجد مستلم مصرّح له يبقى الطالب في الباص ويصل تنبيه للإدارة ولأولياء الأمور.
+ */
+export function HandoverSheet({ visible, studentName, receivers, onPick, onNoReceiver, onClose, safety }: {
+  visible: boolean;
+  studentName: string;
+  receivers: Receiver[];
+  onPick: (r: Receiver) => void;
+  onNoReceiver: () => Promise<void>;
+  onClose: () => void;
+  safety: { emergencyNumber: string; supervisorPhone: string | null };
+}) {
+  const { tr } = useLang();
+  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'failed'>('idle');
+  const close = () => { setState('idle'); onClose(); };
+  return (
+    <Modal visible={visible} animationType="slide" onRequestClose={close}>
+      <Screen>
+        <T bold size={22}>{tr('تسليم', 'Hand over')} {studentName}</T>
+        <T muted>{tr('هذا الطالب يتطلب تسليمًا آمنًا. تحقق من الشخص ثم اختر من استلمه:', 'This student requires a safe handover. Verify the person, then choose who received them:')}</T>
+        {receivers.length === 0 && <Card style={{ backgroundColor: C.amberBg }}><T style={{ color: C.amber }}>{tr('لا يوجد مستلمون مسجلون لهذا الطالب. تواصل مع المشرف.', 'No receivers registered. Contact the supervisor.')}</T></Card>}
+        {receivers.map((r) => (
+          <Btn key={`${r.kind}:${r.refId}`} big title={`${r.fullName}${r.relationship ? ` (${r.relationship})` : r.kind === 'guardian' ? ` (${tr('ولي أمر', 'guardian')})` : ''}`}
+            onPress={() => { setState('idle'); onPick(r); }} />
+        ))}
+        <T bold style={{ marginTop: 8 }}>{tr('لا يوجد أحد لاستلامه؟', 'Nobody to receive?')}</T>
+        <Btn big kind="danger" busy={state === 'sending'} title={tr('لا يوجد مستلم — يبقى في الباص', 'No receiver — keep on bus')} onPress={async () => {
+          setState('sending');
+          try { await onNoReceiver(); setState('sent'); } catch { setState('failed'); }
+        }} />
+        {state === 'sent' && <Card style={{ backgroundColor: C.greenBg }}><T style={{ color: C.greenDark }}>{tr('أُبلغت الإدارة وأولياء الأمور. أبقِ الطالب في الباص واتبع تعليمات المشرف.', 'Office and parents notified. Keep the student on the bus and follow the supervisor.')}</T></Card>}
+        {state === 'failed' && <Card style={{ backgroundColor: C.redBg }}><T style={{ color: C.red }}>{tr('تعذر الإرسال (لا اتصال). اتصل بالمشرف مباشرة وأبقِ الطالب في الباص.', 'Could not send (offline). Call the supervisor and keep the student on the bus.')}</T></Card>}
+        {safety.supervisorPhone && <Btn big kind="warn" title={tr('اتصال بمسؤول النقل', 'Call transport supervisor')} onPress={() => Linking.openURL(`tel:${safety.supervisorPhone}`)} />}
+        <Btn kind="ghost" title={tr('إغلاق', 'Close')} onPress={close} />
+      </Screen>
+    </Modal>
+  );
+}

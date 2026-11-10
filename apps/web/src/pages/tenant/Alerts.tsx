@@ -13,6 +13,7 @@ export const ALERT_LABELS: Record<string, { ar: string; en: string }> = {
   emergency: { ar: 'بلاغ طوارئ من السائق', en: 'Driver emergency' },
   issue: { ar: 'بلاغ مشكلة من السائق', en: 'Driver issue report' },
   location_lost: { ar: 'انقطاع الموقع أثناء الرحلة', en: 'Location lost during trip' },
+  no_receiver: { ar: 'لا يوجد مستلم مصرّح له — الطالب باقٍ في الباص', en: 'No authorized receiver — child kept on bus' },
 };
 
 const CATEGORY: Record<string, string> = {
@@ -62,6 +63,7 @@ export function Alerts() {
                   {ALERT_LABELS[a.kind]?.[lang] ?? a.kind}
                   {a.details?.category && <div className="small muted">{CATEGORY[a.details.category] ?? a.details.category}</div>}
                   {a.details?.students && <div className="small muted">{a.details.students.map((s: any) => s.fullName).join('، ')}</div>}
+                  {a.details?.fullName && <div className="small muted">{a.details.fullName}</div>}
                   {a.resolutionNote && <div className="small">✓ {a.resolutionNote}</div>}
                 </td>
                 <td>{a.tripId ? <Link to={`/app/trips/${a.tripId}`}>{a.routeName}</Link> : '—'}</td>

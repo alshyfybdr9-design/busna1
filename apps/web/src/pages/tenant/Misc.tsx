@@ -89,6 +89,7 @@ export function Settings() {
         <div className="field"><label>{lang === 'ar' ? 'رقم الطوارئ' : 'Emergency number'}</label><input dir="ltr" value={s.emergencyNumber} onChange={(e) => setS('emergencyNumber', e.target.value)} /></div>
         <div className="field"><label>{lang === 'ar' ? 'أوقات الدعم (نص يظهر لأولياء الأمور)' : 'Support hours'}</label><input value={s.supportHours ?? ''} onChange={(e) => setS('supportHours', e.target.value || null)} /></div>
         {bool('parentTrackingEnabled', lang === 'ar' ? 'السماح لأولياء الأمور بتتبع الباص أثناء الرحلة' : 'Allow parents to track bus during trips')}
+        {num('approachAlertDefaultM', lang === 'ar' ? 'مسافة تنبيه «الباص اقترب» الافتراضية (متر، 0 = معطّل)' : 'Default "bus approaching" distance (m, 0 = off)', lang === 'ar' ? 'يستطيع ولي الأمر تغييرها لأبنائه من التطبيق' : 'Parents can change it per child in the app')}
         {bool('absenceAutoApprove', lang === 'ar' ? 'اعتماد طلبات الغياب تلقائيًا' : 'Auto-approve absence requests')}
         <h3 style={{ marginTop: 16 }}>{lang === 'ar' ? 'مساعد باصنا' : 'Assistant'}</h3>
         {bool('assistantEnabled', lang === 'ar' ? 'تفعيل المساعد الآلي لمستخدمي الجهة' : 'Enable the assistant')}

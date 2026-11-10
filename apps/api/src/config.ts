@@ -22,7 +22,10 @@ const schema = z.object({
   CORS_ORIGINS: z.string().default('http://localhost:5173'),
   PUSH_PROVIDER: z.enum(['none', 'expo']).default('none'),
   EXPO_ACCESS_TOKEN: z.string().optional(),
-  ROUTING_PROVIDER: z.enum(['none']).default('none'),
+  // وقت الوصول التقديري: estimate = تقدير تقريبي داخلي (مسافة + سرعة الباص الأخيرة) بلا خدمة خارجية،
+  // osrm = خادم OSRM (يُفضّل ذاتي الاستضافة) عبر OSRM_URL، none = لا يُعرض وقت وصول
+  ROUTING_PROVIDER: z.enum(['none', 'estimate', 'osrm']).default('estimate'),
+  OSRM_URL: z.string().url().optional(),
   // «مساعد باصنا»: none = معطّل (يعمل الدعم التقليدي والبحث في قاعدة المعرفة فقط)
   AI_PROVIDER: z.enum(['none', 'anthropic']).default('none'),
   AI_MODEL: z.string().default('claude-opus-5-5'),
@@ -57,6 +60,8 @@ export const tenantSettingsSchema = z.object({
   delayThresholdMin: z.number().int().min(1).max(120).default(10),
   locationLostAfterMin: z.number().int().min(1).max(60).default(5),
   requireRearQrScan: z.boolean().default(false),
+  /** مسافة تنبيه «الباص اقترب» الافتراضية بالأمتار (0 = معطّل افتراضيًا؛ ولي الأمر يغيّرها لأبنائه) */
+  approachAlertDefaultM: z.number().int().min(0).max(5000).default(1000),
   emergencyNumber: z.string().max(20).default('911'),
   supportHours: z.string().max(200).nullable().default(null),
   assistantEnabled: z.boolean().default(true),

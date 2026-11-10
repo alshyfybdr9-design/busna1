@@ -110,6 +110,14 @@ th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
 .offline-bar { position: sticky; top: 0; z-index: 900; background: var(--amber-bg); color: var(--amber); text-align: center; padding: 6px; font-weight: 600; font-size: 0.9rem; }
 .qr-card { border: 2px dashed var(--line); border-radius: 12px; padding: 16px; text-align: center; width: 260px; }
 .qr-card img { width: 200px; height: 200px; }
+.cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; margin-top: 12px; }
+.card-cell { display: grid; gap: 6px; justify-items: center; }
+.card-cell .qr-card { width: 100%; max-width: 260px; background: var(--card); }
+.card-cell .qr-card img { width: 170px; height: 170px; }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--card); padding: 8px 14px; cursor: pointer; color: var(--ink); min-height: 40px; }
+.seg button.on { background: var(--green-600); color: #fff; font-weight: 600; }
+.msg-preview { border: 1px solid var(--line); border-radius: 10px; padding: 12px; background: var(--green-50); }
 
 @media (max-width: 860px) {
   .shell { grid-template-columns: 1fr; }
@@ -123,4 +131,8 @@ th { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
 @media print {
   .sidebar, .topbar, .no-print { display: none !important; }
   .shell { display: block; }
+  .card { box-shadow: none; border: 0; padding: 0; }
+  .cards-grid { grid-template-columns: repeat(3, 1fr); gap: 8mm; }
+  .card-cell { break-inside: avoid; }
+  .card-cell .qr-card { border: 1px solid #999; }
 }

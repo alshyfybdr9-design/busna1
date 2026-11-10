@@ -93,8 +93,18 @@ export async function createTripFromRoute(
             case when exists (select 1 from absences a where a.student_id = rr.student_id and a.absence_date = $3
                                and a.status = 'approved' and (a.direction = 'both' or a.direction = $4))
                  then 'absent' else 'expected' end
-     from route_riders rr join students s on s.id = rr.student_id
-     where rr.route_id = $5 and s.status = 'active'
+     from (
+       -- التعيين الدائم، إلا من له تعيين مؤقت معتمد لهذا التاريخ والاتجاه
+       select r.student_id, r.stop_id from route_riders r
+       where r.route_id = $5
+         and not exists (select 1 from rider_overrides o where o.student_id = r.student_id and o.status = 'active'
+                         and o.direction = $4 and $3::date between o.start_date and o.end_date)
+       union
+       -- طلاب نُقلوا مؤقتًا إلى هذا المسار (طلب تغيير عنوان معتمد)
+       select o.student_id, o.stop_id from rider_overrides o
+       where o.route_id = $5 and o.status = 'active' and o.direction = $4 and $3::date between o.start_date and o.end_date
+     ) rr join students s on s.id = rr.student_id
+     where s.status = 'active'
      returning id, student_id, status`,
     [route.tenant_id, trip.id, input.serviceDate, route.direction, route.id],
   );
@@ -119,6 +129,8 @@ export interface RiderEventInput {
   source: 'manual' | 'qr';
   lat?: number | null;
   lng?: number | null;
+  /** التسليم الآمن: من استلم الطالب عند نزوله في رحلة العودة */
+  handover?: { kind: 'guardian' | 'authorized'; refId: string } | null;
 }
 
 export interface RiderEventResult {
@@ -129,8 +141,10 @@ export interface RiderEventResult {
 }
 
 export async function applyRiderEvents(c: Db, ctx: RequestContext, tripId: string, events: RiderEventInput[]) {
-  const trip = await one(c, `select id, tenant_id, status, started_at from trips where id = $1 for update`, [tripId]);
+  const trip = await one(c, `select id, tenant_id, status, started_at, direction from trips where id = $1 for update`, [tripId]);
   if (!trip) throw notFound();
+  // قائمة المستلمين المصرّح لهم (لطلاب «التسليم الآمن» فقط) — تُحمّل مرة واحدة عند الحاجة
+  let receivers: Array<{ student_id: string; kind: string; ref_id: string; full_name: string }> | null = null;
   const sorted = [...events].sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
   const results: RiderEventResult[] = [];
   const now = Date.now();
@@ -149,7 +163,13 @@ export async function applyRiderEvents(c: Db, ctx: RequestContext, tripId: strin
       results.push({ clientEventId: e.clientEventId, result: 'rejected', code: 'invalid_time' });
       continue;
     }
-    const rider = await one(c, `select id, status from trip_riders where trip_id = $1 and student_id = $2 for update`, [tripId, e.studentId]);
+    const rider = await one(
+      c,
+      `select tr.id, tr.status, s.requires_handover, st.kind as stop_kind
+       from trip_riders tr join students s on s.id = tr.student_id left join route_stops st on st.id = tr.stop_id
+       where tr.trip_id = $1 and tr.student_id = $2 for update of tr`,
+      [tripId, e.studentId],
+    );
     if (!rider) {
       results.push({ clientEventId: e.clientEventId, result: 'rejected', code: 'not_on_trip' });
       continue;
@@ -169,13 +189,29 @@ export async function applyRiderEvents(c: Db, ctx: RequestContext, tripId: strin
       });
       continue;
     }
+    // التسليم الآمن: في رحلة العودة لا يُسجّل نزول طالب صغير عند نقطة منزله إلا مع تحديد مستلم مصرّح له
+    let handover: { kind: string; refId: string; name: string } | null = null;
+    if (e.type === 'alighted' && rider.requires_handover && trip.direction === 'from_school' && rider.stop_kind !== 'school') {
+      if (!e.handover) {
+        results.push({ clientEventId: e.clientEventId, result: 'rejected', code: 'handover_required', riderStatus: rider.status });
+        continue;
+      }
+      receivers ??= await many(c, `select student_id, kind, ref_id, full_name from app.trip_receivers($1)`, [tripId]);
+      const who = receivers.find((r) => r.student_id === e.studentId && r.kind === e.handover!.kind && r.ref_id === e.handover!.refId);
+      if (!who) {
+        results.push({ clientEventId: e.clientEventId, result: 'rejected', code: 'invalid_receiver', riderStatus: rider.status });
+        continue;
+      }
+      handover = { kind: who.kind, refId: who.ref_id, name: who.full_name };
+    }
     const ins = await one(
       c,
       `insert into boarding_events (tenant_id, trip_id, trip_rider_id, student_id, type, new_status, source,
-                                    client_event_id, recorded_at, recorded_by, lat, lng)
-       values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11)
+                                    client_event_id, recorded_at, recorded_by, lat, lng, handover_kind, handover_ref, handover_to)
+       values ($1, $2, $3, $4, $5, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        on conflict (tenant_id, client_event_id) do nothing returning id`,
-      [trip.tenant_id, tripId, rider.id, e.studentId, e.type, e.source, e.clientEventId, e.recordedAt, ctx.userId, e.lat ?? null, e.lng ?? null],
+      [trip.tenant_id, tripId, rider.id, e.studentId, e.type, e.source, e.clientEventId, e.recordedAt, ctx.userId, e.lat ?? null, e.lng ?? null,
+        handover?.kind ?? null, handover?.refId ?? null, handover?.name ?? null],
     );
     if (!ins) {
       results.push({ clientEventId: e.clientEventId, result: 'duplicate' });

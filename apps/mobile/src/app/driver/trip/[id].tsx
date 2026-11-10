@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Alert, Linking, View } from 'react-native';
-import { openNavigation, ReportSheet } from '../../../components/driver';
+import { HandoverSheet, openNavigation, ReportSheet, type Receiver } from '../../../components/driver';
 import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import * as Crypto from 'expo-crypto';
 import { api } from '../../../lib/session';
@@ -8,7 +8,7 @@ import { enqueueEvent, flushEvents, pendingCounts, rejectedEvents, clearRejected
 import { ensureLocationPermissions, isTracking, startTracking } from '../../../lib/tracking';
 import { Btn, C, Card, DIR_LABEL, ErrorView, Loading, Pill, RIDER_LABEL, Screen, T, s, useLang } from '../../../components/ui';
 
-type Rider = { id: string; studentId: string; fullName: string; grade: string | null; stopId: string | null; status: string };
+type Rider = { id: string; studentId: string; fullName: string; grade: string | null; stopId: string | null; status: string; requiresHandover?: boolean; receivers?: Receiver[] };
 type Stop = { id: string; seq: number; name: string; kind: 'stop' | 'school'; lat: number; lng: number };
 
 const REJECT_TEXT: Record<string, [string, string]> = {
@@ -17,6 +17,8 @@ const REJECT_TEXT: Record<string, [string, string]> = {
   trip_not_active: ['الرحلة لم تعد جارية.', 'Trip is no longer active.'],
   not_on_trip: ['الطالب ليس ضمن هذه الرحلة.', 'Student is not on this trip.'],
   invalid_time: ['وقت الجهاز غير صحيح.', 'Device time is incorrect.'],
+  handover_required: ['هذا الطالب يتطلب تحديد من استلمه قبل تسجيل نزوله.', 'Choose who received this student before dropping off.'],
+  invalid_receiver: ['المستلم المختار لم يعد مصرّحًا له. أعد الاختيار أو تواصل مع المشرف.', 'The chosen receiver is no longer authorized. Choose again or contact the supervisor.'],
 };
 
 export default function DriverTrip() {
@@ -31,6 +33,7 @@ export default function DriverTrip() {
   const [starting, setStarting] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
   const [rejected, setRejected] = useState<Array<{ student_id: string; code: string }>>([]);
+  const [handoverFor, setHandoverFor] = useState<Rider | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -81,8 +84,16 @@ export default function DriverTrip() {
     return pickups.find(waiting) ?? (dir === 'to_school' ? stops.find((st) => st.kind === 'school') ?? null : null);
   }, [data, riders, stops]);
 
-  async function record(r: Rider, type: QueuedEvent['type'], source: 'manual' | 'qr' = 'manual') {
-    const e: QueuedEvent = { clientEventId: Crypto.randomUUID(), studentId: r.studentId, type, recordedAt: new Date().toISOString(), source };
+  async function record(r: Rider, type: QueuedEvent['type'], source: 'manual' | 'qr' = 'manual', handover?: Receiver) {
+    // التسليم الآمن: النزول يتطلب اختيار المستلم أولًا
+    if (type === 'alighted' && r.requiresHandover && !handover) {
+      setHandoverFor(r);
+      return;
+    }
+    const e: QueuedEvent = {
+      clientEventId: Crypto.randomUUID(), studentId: r.studentId, type, recordedAt: new Date().toISOString(), source,
+      ...(handover ? { handover: { kind: handover.kind, refId: handover.refId } } : {}),
+    };
     await enqueueEvent(id, e); // يُحفظ محليًا أولًا ثم يُرسل
     setLocal((l) => ({ ...l, [r.studentId]: type }));
     sync();
@@ -206,7 +217,10 @@ export default function DriverTrip() {
           {rs.map((r) => (
             <View key={r.id} style={{ borderTopWidth: 1, borderColor: C.line, paddingVertical: 10, gap: 8 }}>
               <View style={[s.row, { justifyContent: 'space-between' }]}>
-                <T size={18}>{r.fullName}</T>
+                <View style={{ flex: 1 }}>
+                  <T size={18}>{r.fullName}</T>
+                  {r.requiresHandover && <T size={13} style={{ color: C.amber }}>{tr('تسليم آمن: يُسلَّم لمستلم مصرّح له فقط', 'Safe handover: authorized receiver only')}</T>}
+                </View>
                 <Pill text={tr(...RIDER_LABEL[r.status])} tone={r.status === 'boarded' ? 'blue' : r.status === 'alighted' ? 'green' : r.status === 'expected' ? 'gray' : 'amber'} />
               </View>
               {active && (
@@ -224,6 +238,15 @@ export default function DriverTrip() {
       {active && <Btn big kind="warn" title={tr('إنهاء الرحلة', 'End trip')} onPress={() => router.push(`/driver/end/${id}`)} />}
       {trip.status === 'completed' && trip.inspectionStatus === 'pending' && <Btn big kind="warn" title={tr('فحص خلو الباص', 'Bus-empty check')} onPress={() => router.push(`/driver/end/${id}`)} />}
 
+      <HandoverSheet
+        visible={handoverFor != null}
+        studentName={handoverFor?.fullName ?? ''}
+        receivers={handoverFor?.receivers ?? []}
+        safety={data.safety}
+        onClose={() => setHandoverFor(null)}
+        onPick={(rcv) => { const r = handoverFor!; setHandoverFor(null); record(r, 'alighted', 'manual', rcv); }}
+        onNoReceiver={async () => { await api('POST', `/driver/trips/${id}/riders/${handoverFor!.studentId}/no-receiver`, {}); }}
+      />
       <ReportSheet visible={reportOpen} onClose={() => setReportOpen(false)} tripId={id} safety={data.safety} />
     </Screen>
   );

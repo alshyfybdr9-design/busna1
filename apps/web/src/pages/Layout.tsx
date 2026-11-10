@@ -49,6 +49,8 @@ export function TenantLayout() {
             <NavLink to="/app/trips">{t('trips')}</NavLink>
             <NavLink to="/app/alerts">{t('alerts')}</NavLink>
             <NavLink to="/app/absences">{t('absences')}</NavLink>
+            <NavLink to="/app/messages">{lang === 'ar' ? 'الرسائل' : 'Messages'}</NavLink>
+            <NavLink to="/app/requests">{lang === 'ar' ? 'طلبات تغيير العنوان' : 'Address requests'}</NavLink>
             <NavLink to="/app/support">{lang === 'ar' ? 'تذاكر الدعم' : 'Support tickets'}</NavLink>
             <NavLink to="/app/assistant">{lang === 'ar' ? 'مساعد باصنا' : 'Assistant'}</NavLink>
             <NavLink to="/app/students">{t('students')}</NavLink>

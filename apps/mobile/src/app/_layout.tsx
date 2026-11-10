@@ -33,6 +33,8 @@ export default function RootLayout() {
             <Stack.Screen name="parent/index" options={{ title: 'أبنائي' }} />
             <Stack.Screen name="parent/child/[id]" options={{ title: 'متابعة الرحلة' }} />
             <Stack.Screen name="parent/absence" options={{ title: 'طلب غياب' }} />
+            <Stack.Screen name="parent/settings/[id]" options={{ title: 'التنبيهات والمستلمون' }} />
+            <Stack.Screen name="parent/address" options={{ title: 'تغيير العنوان' }} />
             <Stack.Screen name="notifications" options={{ title: 'الإشعارات' }} />
             <Stack.Screen name="support" options={{ title: 'الدعم والتواصل' }} />
             <Stack.Screen name="assistant" options={{ title: 'مساعد باصنا' }} />

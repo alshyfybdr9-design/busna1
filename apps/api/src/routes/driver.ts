@@ -15,6 +15,7 @@ const eventSchema = z.object({
   source: z.enum(['manual', 'qr']).default('manual'),
   lat: z.number().min(-90).max(90).nullish(),
   lng: z.number().min(-180).max(180).nullish(),
+  handover: z.object({ kind: z.enum(['guardian', 'authorized']), refId: z.string().uuid() }).nullish(),
 });
 
 const pointSchema = z.object({
@@ -28,6 +29,15 @@ const pointSchema = z.object({
 
 /** بنود فحص خلو الباص — كلها مطلوبة لنتيجة "الباص خالٍ" */
 export const INSPECTION_ITEMS = ['walkedToRear', 'checkedSeats', 'checkedUnderSeats', 'checkedBackRow', 'noBelongingsLeft'] as const;
+
+/** رسائل الإدارة الجماعية خلال آخر 24 ساعة (من إشعارات المستخدم نفسه) */
+export async function recentMessages(c: Parameters<typeof one>[0]) {
+  return many(
+    c,
+    `select id, title, body, created_at as "createdAt", read_at as "readAt" from notifications
+     where kind = 'broadcast' and created_at > now() - interval '24 hours' order by created_at desc limit 5`,
+  );
+}
 
 async function ownTrip(c: Parameters<typeof one>[0], tripId: string) {
   // RLS يعيد رحلات السائق فقط؛ أي رحلة أخرى تظهر كغير موجودة
@@ -56,7 +66,7 @@ export async function driverRoutes(app: FastifyInstance) {
          order by t.planned_start nulls last, t.created_at`,
         [req.ctx.userId, date],
       );
-      return { date, trips };
+      return { date, trips, messages: await recentMessages(c) };
     });
   });
 
@@ -76,11 +86,16 @@ export async function driverRoutes(app: FastifyInstance) {
       const riders = await many(
         c,
         `select tr.id, tr.student_id as "studentId", s.full_name as "fullName", s.grade, tr.stop_id as "stopId",
-                tr.status, tr.boarded_at as "boardedAt", tr.alighted_at as "alightedAt"
-         from trip_riders tr join students s on s.id = tr.student_id
+                tr.status, tr.boarded_at as "boardedAt", tr.alighted_at as "alightedAt",
+                (s.requires_handover and $2 = 'from_school' and coalesce(st.kind, 'stop') <> 'school') as "requiresHandover"
+         from trip_riders tr join students s on s.id = tr.student_id left join route_stops st on st.id = tr.stop_id
          where tr.trip_id = $1 order by s.full_name`,
-        [id],
+        [id, trip.direction],
       );
+      // المستلمون المصرّح لهم: الاسم والقرابة فقط — لطلاب التسليم الآمن في رحلة العودة
+      const receivers = trip.direction === 'from_school' && riders.some((r) => r.requiresHandover)
+        ? await many(c, `select student_id as "studentId", kind, ref_id as "refId", full_name as "fullName", relationship from app.trip_receivers($1) order by kind, full_name`, [id])
+        : [];
       const inspection = await one(c, `select result, completed_at as "completedAt" from trip_inspections where trip_id = $1`, [id]);
       return {
         trip: {
@@ -89,7 +104,7 @@ export async function driverRoutes(app: FastifyInstance) {
           inspectionStatus: trip.inspection_status, route, bus,
         },
         stops,
-        riders,
+        riders: riders.map((r) => ({ ...r, receivers: r.requiresHandover ? receivers.filter((x) => x.studentId === r.studentId) : undefined })),
         counts: await riderCounts(c, id),
         inspection,
         inspectionItems: INSPECTION_ITEMS,
@@ -253,6 +268,41 @@ export async function driverRoutes(app: FastifyInstance) {
       }
       await audit(c, req.ctx, 'trip.inspection', 'trip', id, { result: body.result, rearScanVerified });
       return { status: 'recorded', result: body.result, rearScanVerified, selfDeclared: true };
+    });
+  });
+
+  /**
+   * لا يوجد مستلم مصرّح له عند نقطة التوقف: يبقى الطالب في الباص،
+   * ويصل تنبيه للإدارة وإشعار لأولياء الأمور. لا يُسجّل نزول.
+   */
+  app.post('/driver/trips/:id/riders/:studentId/no-receiver', auth, async (req) => {
+    const p = parse(z.object({ id: z.string().uuid(), studentId: z.string().uuid() }), req.params);
+    const body = parse(z.object({ lat: z.number().min(-90).max(90).nullish(), lng: z.number().min(-180).max(180).nullish() }), req.body ?? {});
+    return withCtx(req.ctx, async (c) => {
+      const trip = await ownTrip(c, p.id);
+      if (trip.status !== 'in_progress') throw new AppError(409, 'trip_not_active');
+      const rider = await one(
+        c,
+        `select tr.id, tr.status, s.full_name from trip_riders tr join students s on s.id = tr.student_id where tr.trip_id = $1 and tr.student_id = $2`,
+        [p.id, p.studentId],
+      );
+      if (!rider) throw notFound();
+      if (rider.status !== 'boarded') throw new AppError(409, 'invalid_transition');
+      const tenant = await loadTenant(c, req.ctx.tenantId!);
+      const call = { emergencyNumber: tenant.cfg.emergencyNumber, supervisorPhone: tenant.contact_phone };
+      const a = await one(
+        c,
+        `insert into safety_alerts (tenant_id, trip_id, kind, severity, details, created_by, dedupe_key)
+         values ($1, $2, 'no_receiver', 'high', $3, $4, $5)
+         on conflict (tenant_id, dedupe_key) do nothing returning id`,
+        [trip.tenant_id, p.id, JSON.stringify({ studentId: p.studentId, fullName: rider.full_name, lat: body.lat ?? null, lng: body.lng ?? null }),
+          req.ctx.userId, `no_receiver:${p.id}:${p.studentId}`],
+      );
+      if (!a) return { duplicate: true, call };
+      await enqueue(c, trip.tenant_id, 'safety_alert', { alertId: a.id });
+      await enqueue(c, trip.tenant_id, 'no_receiver', { tripId: p.id, studentId: p.studentId });
+      await audit(c, req.ctx, 'trip.no_receiver', 'trip', p.id, { studentId: p.studentId });
+      return { alertId: a.id, call };
     });
   });
 

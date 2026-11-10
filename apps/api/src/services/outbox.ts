@@ -6,7 +6,11 @@ export type OutboxKind =
   | 'rider_event'
   | 'safety_alert'
   | 'absence_updated'
-  | 'ticket_event';
+  | 'ticket_event'
+  | 'broadcast'
+  | 'bus_approaching'
+  | 'no_receiver'
+  | 'stop_change_updated';
 
 /**
  * يُكتب الحدث في نفس معاملة التغيير (Transactional Outbox)،

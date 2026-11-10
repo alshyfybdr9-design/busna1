@@ -1,7 +1,7 @@
 import { View } from 'react-native';
 import { router } from 'expo-router';
 import { api } from '../../lib/session';
-import { AccountActions, usePushRegistration } from '../../components/common';
+import { AccountActions, MessagesCard, usePushRegistration } from '../../components/common';
 import { Btn, C, Card, DIR_LABEL, ErrorView, Loading, Pill, RIDER_LABEL, Screen, T, TRIP_LABEL, s, timeText, useLang, usePolling } from '../../components/ui';
 
 function tripLine(t: any, tr: (a: string, e: string) => string, lang: 'ar' | 'en') {
@@ -23,6 +23,7 @@ export default function ParentHome() {
         <T bold size={18}>{me.data?.tenant?.name ?? ''}</T>
         <Btn kind="secondary" title={`${tr('الإشعارات', 'Notifications')}${me.data?.unreadNotifications ? ` (${me.data.unreadNotifications})` : ''}`} onPress={() => router.push('/notifications')} />
       </View>
+      <MessagesCard messages={q.data?.messages} />
       <Btn kind="secondary" title={tr('اسأل مساعد باصنا', 'Ask Busna Assistant')} onPress={() => router.push('/assistant')} />
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
@@ -44,6 +45,11 @@ export default function ParentHome() {
               <Btn style={{ flex: 1 }} title={active ? tr('تتبع الباص', 'Track bus') : tr('التفاصيل', 'Details')} onPress={() => router.push(`/parent/child/${c.id}`)} />
               <Btn style={{ flex: 1 }} kind="secondary" title={tr('طلب غياب', 'Report absence')} onPress={() => router.push({ pathname: '/parent/absence', params: { studentId: c.id } })} />
             </View>
+            <View style={s.row}>
+              <Btn style={{ flex: 1 }} kind="ghost" title={tr('التنبيهات والمستلمون', 'Alerts & pickups')} onPress={() => router.push(`/parent/settings/${c.id}`)} />
+              <Btn style={{ flex: 1 }} kind="ghost" title={tr('تغيير العنوان', 'Change address')} onPress={() => router.push({ pathname: '/parent/address', params: { studentId: c.id } })} />
+            </View>
+            {c.requiresHandover && <T muted size={13}>{tr('التسليم الآمن مفعّل: لا يُنزَّل في رحلة العودة إلا لك أو لمن تصرّح لهم.', 'Safe handover on: dropped off only to you or people you authorize.')}</T>}
           </Card>
         );
       })}

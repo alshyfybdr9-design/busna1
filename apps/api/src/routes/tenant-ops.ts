@@ -97,7 +97,7 @@ export async function tenantOpsRoutes(app: FastifyInstance) {
       const events = await many(
         c,
         `select e.id, e.student_id as "studentId", s.full_name as "studentName", e.type, e.new_status as "newStatus", e.source,
-                e.recorded_at as "recordedAt", e.received_at as "receivedAt", e.reason, u.full_name as "recordedBy"
+                e.recorded_at as "recordedAt", e.received_at as "receivedAt", e.reason, e.handover_to as "handoverTo", u.full_name as "recordedBy"
          from boarding_events e join students s on s.id = e.student_id left join users u on u.id = e.recorded_by
          where e.trip_id = $1 order by e.recorded_at`,
         [id],

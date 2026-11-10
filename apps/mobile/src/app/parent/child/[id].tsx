@@ -38,6 +38,7 @@ export default function ChildStatus() {
             <T size={20} bold style={{ color: C.greenDark }}>{tr(...RIDER_LABEL[trip.riderStatus])}</T>
             {trip.bus && <T muted>{tr('الباص', 'Bus')}: {trip.bus.label ?? trip.bus.plate}</T>}
             {trip.stop && <T muted>{tr('نقطة التوقف', 'Stop')}: {trip.stop.name}</T>}
+            {trip.handoverTo && <T style={{ color: C.greenDark }}>{tr('تم التسليم إلى', 'Handed to')}: {trip.handoverTo}</T>}
           </Card>
 
           <Card>
@@ -59,7 +60,8 @@ export default function ChildStatus() {
               </T>
             )}
             <T muted size={13}>
-              {eta?.available ? `${tr('وصول تقديري خلال', 'Estimated arrival in')} ${Math.round(eta.seconds / 60)} ${tr('دقيقة (تقديري)', 'min (estimate)')}`
+              {eta?.available ? `${tr('وصول تقديري خلال نحو', 'Estimated arrival in about')} ${Math.max(1, Math.round(eta.seconds / 60))} ${tr('دقيقة — تقريبي وقد يتغير', 'min — approximate')}`
+                : eta?.reason === 'stale_location' ? tr('لا يُحسب وقت الوصول لأن آخر موقع للباص قديم.', 'No ETA: the last bus position is outdated.')
                 : tr('وقت الوصول التقديري غير متاح حاليًا.', 'Estimated arrival time is not available.')}
             </T>
           </Card>
@@ -68,7 +70,7 @@ export default function ChildStatus() {
             <T bold>{tr('سجل الرحلة', 'Trip log')}</T>
             {trip.events.length === 0 && <T muted>{tr('لا أحداث بعد', 'No events yet')}</T>}
             {trip.events.map((e: any, i: number) => (
-              <T key={i}>{timeText(e.recordedAt, lang)} — {tr(...(EVENT[e.type] ?? [e.type, e.type]))}{e.type === 'correction' ? ` (${tr(...RIDER_LABEL[e.newStatus])})` : ''}</T>
+              <T key={i}>{timeText(e.recordedAt, lang)} — {tr(...(EVENT[e.type] ?? [e.type, e.type]))}{e.type === 'correction' ? ` (${tr(...RIDER_LABEL[e.newStatus])})` : ''}{e.handoverTo ? ` — ${tr('سُلّم إلى', 'to')} ${e.handoverTo}` : ''}</T>
             ))}
           </Card>
         </>

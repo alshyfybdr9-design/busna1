@@ -9,6 +9,7 @@ import { withWorkerDb, many, one, type Db } from '../db/pool.js';
 import { pushProvider } from '../integrations/push.js';
 import { tenantSettings } from '../config.js';
 import { firstName } from '../lib/util.js';
+import { etaProvider, haversineM } from '../integrations/routing.js';
 
 interface Note {
   userId: string;
@@ -25,7 +26,11 @@ const PUSH_GENERIC = {
   staff: { title: 'باصنا — تنبيه تشغيل', body: 'يوجد تنبيه تشغيلي يحتاج المتابعة. افتح التطبيق.' },
   absence: { title: 'باصنا', body: 'تم تحديث طلب الغياب. افتح التطبيق للتفاصيل.' },
   ticket: { title: 'باصنا — الدعم', body: 'يوجد تحديث على تذكرة دعم. افتح التطبيق للتفاصيل.' },
+  broadcast: { title: 'باصنا', body: 'رسالة جديدة من إدارة النقل. افتح التطبيق للتفاصيل.' },
+  approach: { title: 'باصنا', body: 'الباص يقترب من نقطة التوقف.' },
+  request: { title: 'باصنا', body: 'تم تحديث طلبك. افتح التطبيق للتفاصيل.' },
 };
+type Audience = keyof typeof PUSH_GENERIC;
 
 const DIRECTION_AR: Record<string, string> = { to_school: 'الذهاب', from_school: 'العودة' };
 
@@ -48,7 +53,11 @@ async function staffOf(c: Db, tenantId: string) {
   );
 }
 
-async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload: any; id: number }): Promise<{ notes: Note[]; audience: 'parent' | 'staff' | 'absence' | 'ticket'; platform?: boolean }> {
+const CATEGORY_AR: Record<string, string> = {
+  delay: 'تأخير', breakdown: 'عطل باص', route_change: 'تغيير مسار', weather: 'ظروف جوية', early_dismissal: 'خروج مبكر', general: 'إعلان',
+};
+
+async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload: any; id: number }): Promise<{ notes: Note[]; audience: Audience; platform?: boolean }> {
   const p = ev.payload;
   switch (ev.kind) {
     case 'trip_started':
@@ -83,13 +92,15 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
         expected: 'عاد إلى قائمة الرحلة',
       };
       if (!text[status]) return { notes: [], audience: 'parent' };
+      const be = p.eventId ? await one(c, `select handover_to from boarding_events where id = $1`, [p.eventId]) : null;
+      const handover = status === 'alighted' && be?.handover_to ? ` وتم تسليمه إلى: ${be.handover_to}` : '';
       return {
         audience: 'parent',
         notes: gs.map((g) => ({
           userId: g.user_id,
           kind: `rider_${status}`,
           title: p.type === 'correction' ? 'تصحيح حالة الرحلة' : 'تحديث الرحلة',
-          body: `${firstName(g.full_name)} ${text[status]}.`,
+          body: `${firstName(g.full_name)} ${text[status]}${handover}.`,
           dedupeKey: p.type === 'correction' ? `correction:${p.eventId}` : `rider:${p.tripRiderId}:${status}`,
           data: { tripId: p.tripId, studentId: p.studentId },
         })),
@@ -106,6 +117,7 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
         emergency: 'بلاغ طوارئ من سائق',
         issue: 'بلاغ مشكلة من سائق',
         location_lost: 'انقطاع موقع باص أثناء رحلة',
+        no_receiver: 'لا يوجد مستلم مصرّح له — الطالب باقٍ في الباص',
       };
       const staff = await staffOf(c, ev.tenant_id);
       return {
@@ -175,9 +187,130 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
         })),
       };
     }
+    case 'broadcast': {
+      const b = await one(c, `select id, audience, route_ids, trip_ids, category, title, body, delay_minutes from broadcasts where id = $1`, [p.broadcastId]);
+      if (!b) return { notes: [], audience: 'broadcast' };
+      let users: Array<{ user_id: string }> = [];
+      const parentsSql = `select distinct gs.guardian_user_id as user_id from guardian_students gs
+        join memberships m on m.user_id = gs.guardian_user_id and m.tenant_id = gs.tenant_id and m.role = 'parent' and m.status = 'active'
+        where gs.tenant_id = $1 and gs.student_id in `;
+      if (b.audience === 'all_parents' || b.audience === 'everyone') {
+        users = await many(c, `select distinct user_id from memberships where tenant_id = $1 and role = 'parent' and status = 'active'`, [ev.tenant_id]);
+      } else if (b.audience === 'routes') {
+        users = await many(
+          c,
+          parentsSql + `(select rr.student_id from route_riders rr where rr.route_id = any($2::uuid[])
+                         union select tr.student_id from trip_riders tr join trips t on t.id = tr.trip_id
+                           where t.route_id = any($2::uuid[]) and t.service_date >= current_date - 1 and t.status in ('scheduled', 'in_progress')
+                         union select o.student_id from rider_overrides o where o.route_id = any($2::uuid[]) and o.status = 'active' and o.end_date >= current_date)`,
+          [ev.tenant_id, b.route_ids],
+        );
+      } else if (b.audience === 'trips') {
+        users = await many(c, parentsSql + `(select tr.student_id from trip_riders tr where tr.trip_id = any($2::uuid[]) and tr.status <> 'absent')`, [ev.tenant_id, b.trip_ids]);
+      }
+      if (b.audience === 'drivers' || b.audience === 'everyone') {
+        users = [...users, ...(await many(c, `select distinct user_id from memberships where tenant_id = $1 and role = 'driver' and status = 'active'`, [ev.tenant_id]))];
+      }
+      const ids = [...new Set(users.map((u) => u.user_id))];
+      await c.query(`update broadcasts set recipient_count = $2 where id = $1`, [b.id, ids.length]);
+      const prefix = b.category !== 'general' ? `${CATEGORY_AR[b.category]}: ` : '';
+      return {
+        audience: 'broadcast',
+        notes: ids.map((u) => ({
+          userId: u, kind: 'broadcast',
+          title: `${prefix}${b.title}`.slice(0, 160),
+          body: b.delay_minutes ? `${b.body}\n(التأخير المتوقع: نحو ${b.delay_minutes} دقيقة)` : b.body,
+          dedupeKey: `broadcast:${b.id}`, data: { broadcastId: b.id },
+        })),
+      };
+    }
+    case 'bus_approaching': {
+      const gs = (await guardiansOf(c, ev.tenant_id, [p.studentId])).filter((g) => g.user_id === p.guardianUserId);
+      const mins = p.etaSec ? Math.max(1, Math.round(p.etaSec / 60)) : null;
+      const dist = p.distanceM >= 1000 ? `${(p.distanceM / 1000).toFixed(1)} كم` : `${Math.max(50, Math.round(p.distanceM / 50) * 50)} م`;
+      return {
+        audience: 'approach',
+        notes: gs.map((g) => ({
+          userId: g.user_id, kind: 'bus_approaching',
+          title: p.direction === 'from_school' ? 'الباص يقترب من المنزل' : 'الباص يقترب من نقطة الصعود',
+          body: `باص ${firstName(g.full_name)} على بعد نحو ${dist} من ${p.stopName}${mins ? ` — الوصول خلال ${mins} دقيقة تقريبًا (تقديري)` : ''}.`,
+          dedupeKey: `approach:${p.tripId}:${p.studentId}`,
+          data: { tripId: p.tripId, studentId: p.studentId },
+        })),
+      };
+    }
+    case 'no_receiver': {
+      const gs = await guardiansOf(c, ev.tenant_id, [p.studentId]);
+      return {
+        audience: 'parent',
+        notes: gs.map((g) => ({
+          userId: g.user_id, kind: 'no_receiver',
+          title: 'لم يكن هناك مستلم عند نقطة النزول',
+          body: `لم يجد السائق مستلمًا مصرّحًا له لـ${firstName(g.full_name)}، لذلك بقي في الباص بأمان. ستتواصل معكم إدارة النقل.`,
+          dedupeKey: `no_receiver:${p.tripId}:${p.studentId}`,
+          data: { tripId: p.tripId, studentId: p.studentId },
+        })),
+      };
+    }
+    case 'stop_change_updated': {
+      const r = await one(c, `select id, status, requested_by, review_note from stop_change_requests where id = $1`, [p.requestId]);
+      if (!r || !['approved', 'rejected'].includes(r.status)) return { notes: [], audience: 'request' };
+      const title = r.status === 'approved' ? 'تم اعتماد طلب تغيير العنوان' : 'تم رفض طلب تغيير العنوان';
+      return {
+        audience: 'request',
+        notes: [{ userId: r.requested_by, kind: 'stop_change_updated', title, body: r.review_note ? `${title}. ملاحظة الإدارة: ${r.review_note}` : `${title}.`,
+          dedupeKey: `stop_change:${r.id}:${r.status}`, data: { requestId: r.id } }],
+      };
+    }
     default:
       return { notes: [], audience: 'parent' };
   }
+}
+
+/**
+ * تنبيه «الباص اقترب»: لكل رحلة جارية بموقع حديث، يُقارن موقع الباص بنقطة توقف كل طالب
+ * (الذهاب: من لم يصعد بعد. العودة: من في الباص). يُرسل مرة واحدة لكل طالب في الرحلة.
+ */
+export async function runApproachChecks(): Promise<number> {
+  return withWorkerDb(async (c) => {
+    const rows = await many(
+      c,
+      `with lastloc as (
+         select distinct on (bl.trip_id) bl.trip_id, bl.lat, bl.lng, bl.recorded_at
+         from bus_locations bl join trips t on t.id = bl.trip_id
+         where t.status = 'in_progress' and bl.recorded_at > now() - interval '2 minutes'
+         order by bl.trip_id, bl.recorded_at desc)
+       select t.id as trip_id, t.tenant_id, t.direction, tr.student_id, gs.guardian_user_id, st.name as stop_name,
+              st.lat as stop_lat, st.lng as stop_lng, l.lat, l.lng, extract(epoch from now() - l.recorded_at)::int as age,
+              p.student_id is not null as has_pref, p.approach_meters, tn.settings
+       from lastloc l join trips t on t.id = l.trip_id join tenants tn on tn.id = t.tenant_id
+       join trip_riders tr on tr.trip_id = t.id
+         and ((t.direction = 'to_school' and tr.status = 'expected') or (t.direction = 'from_school' and tr.status = 'boarded'))
+       join route_stops st on st.id = tr.stop_id and st.kind = 'stop'
+       join guardian_students gs on gs.student_id = tr.student_id and gs.tenant_id = t.tenant_id
+       join memberships m on m.user_id = gs.guardian_user_id and m.tenant_id = t.tenant_id and m.role = 'parent' and m.status = 'active'
+       left join guardian_alert_prefs p on p.student_id = tr.student_id and p.guardian_user_id = gs.guardian_user_id
+       where not exists (select 1 from notifications n where n.user_id = gs.guardian_user_id
+                         and n.dedupe_key = 'approach:' || t.id || ':' || tr.student_id)`,
+    );
+    let n = 0;
+    for (const r of rows) {
+      const threshold = r.has_pref ? r.approach_meters : tenantSettings(r.settings).approachAlertDefaultM;
+      if (!threshold) continue;
+      const bus = { lat: r.lat, lng: r.lng };
+      const stop = { lat: r.stop_lat, lng: r.stop_lng };
+      const distanceM = haversineM(bus, stop);
+      if (distanceM > threshold) continue;
+      const eta = await etaProvider().estimate({ from: bus, to: stop, locationAgeSec: r.age, staleAfterSec: tenantSettings(r.settings).staleAfterSec });
+      await c.query(`insert into outbox_events (tenant_id, kind, payload) values ($1, 'bus_approaching', $2)`, [
+        r.tenant_id,
+        JSON.stringify({ tripId: r.trip_id, studentId: r.student_id, guardianUserId: r.guardian_user_id, direction: r.direction,
+          stopName: r.stop_name, distanceM: Math.round(distanceM), etaSec: eta.available ? eta.seconds : null }),
+      ]);
+      n++;
+    }
+    return n;
+  });
 }
 
 export async function processOutbox(limit = 50): Promise<number> {
@@ -322,6 +455,7 @@ export function startWorker(log: { error: (o: unknown, m?: string) => void }) {
     busy = true;
     try {
       await processOutbox();
+      if (ticks % 5 === 0) await runApproachChecks();
       if (ticks % 30 === 0) await runSafetyChecks();
       if (ticks % 1800 === 0) await runRetention();
       workerStatus.lastRunAt = new Date();

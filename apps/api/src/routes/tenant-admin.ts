@@ -187,6 +187,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     studentCode: z.string().trim().max(40).nullish(),
     notes: z.string().trim().max(500).nullish(),
     status: z.enum(['active', 'inactive']).optional(),
+    requiresHandover: z.boolean().optional(),
   });
 
   app.get('/tenant/students', staff, async (req) => {
@@ -195,6 +196,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       students: await many(
         c,
         `select s.id, s.full_name as "fullName", s.grade, s.school_name as "schoolName", s.student_code as "studentCode", s.status,
+                s.qr_token as "qrToken", s.requires_handover as "requiresHandover",
                 (select count(*) from guardian_students gs where gs.student_id = s.id) as "guardianCount",
                 (select json_agg(json_build_object('routeId', r.id, 'routeName', r.name, 'direction', r.direction, 'stopName', st.name))
                    from route_riders rr join routes r on r.id = rr.route_id join route_stops st on st.id = rr.stop_id
@@ -213,9 +215,10 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     return withCtx(req.ctx, async (c) => {
       const s = await one(
         c,
-        `insert into students (tenant_id, full_name, grade, school_name, student_code, notes)
-         values ($1, $2, $3, $4, $5, $6) returning id, full_name as "fullName"`,
-        [req.ctx.tenantId, body.fullName, body.grade ?? null, body.schoolName ?? null, body.studentCode ?? null, body.notes ?? null],
+        `insert into students (tenant_id, full_name, grade, school_name, student_code, notes, requires_handover)
+         values ($1, $2, $3, $4, $5, $6, $7) returning id, full_name as "fullName"`,
+        [req.ctx.tenantId, body.fullName, body.grade ?? null, body.schoolName ?? null, body.studentCode ?? null, body.notes ?? null,
+          body.requiresHandover ?? false],
       );
       await audit(c, req.ctx, 'student.created', 'student', s.id);
       return { student: s };
@@ -228,7 +231,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       const s = await one(
         c,
         `select id, full_name as "fullName", grade, school_name as "schoolName", student_code as "studentCode", notes, status,
-                qr_token as "qrToken", created_at as "createdAt" from students where id = $1`,
+                qr_token as "qrToken", requires_handover as "requiresHandover", created_at as "createdAt" from students where id = $1`,
         [id],
       );
       if (!s) throw notFound();
@@ -250,7 +253,19 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
          where $1::uuid = any(student_ids) and accepted_at is null and revoked_at is null and expires_at > now()`,
         [id],
       );
-      return { student: s, guardians, routes, pendingInvites };
+      const pickups = await many(
+        c,
+        `select p.id, p.full_name as "fullName", p.relationship, p.phone, p.created_at as "createdAt", u.full_name as "addedBy"
+         from authorized_pickups p left join users u on u.id = p.added_by where p.student_id = $1 and p.status = 'active' order by p.created_at`,
+        [id],
+      );
+      const stopChanges = await many(
+        c,
+        `select id, kind, direction, start_date as "startDate", end_date as "endDate", address, status, created_at as "createdAt"
+         from stop_change_requests where student_id = $1 order by created_at desc limit 10`,
+        [id],
+      );
+      return { student: s, guardians, routes, pendingInvites, pickups, stopChanges };
     });
   });
 
@@ -260,8 +275,10 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     return withCtx(req.ctx, async (c) => {
       const r = await c.query(
         `update students set full_name = coalesce($2, full_name), grade = coalesce($3, grade), school_name = coalesce($4, school_name),
-           student_code = coalesce($5, student_code), notes = coalesce($6, notes), status = coalesce($7, status) where id = $1`,
-        [id, body.fullName ?? null, body.grade ?? null, body.schoolName ?? null, body.studentCode ?? null, body.notes ?? null, body.status ?? null],
+           student_code = coalesce($5, student_code), notes = coalesce($6, notes), status = coalesce($7, status),
+           requires_handover = coalesce($8, requires_handover) where id = $1`,
+        [id, body.fullName ?? null, body.grade ?? null, body.schoolName ?? null, body.studentCode ?? null, body.notes ?? null, body.status ?? null,
+          body.requiresHandover ?? null],
       );
       if (!r.rowCount) throw notFound();
       await audit(c, req.ctx, 'student.updated', 'student', id, { fields: Object.keys(body) });

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { api } from '../../api';
+import { ComposeModal } from './Messages';
 import { useI18n, fmtTime, fmtDateTime } from '../../i18n';
 import { Empty, ErrorBox, Freshness, Loading, Modal, RiderStatus, TripStatus } from '../../components/ui';
 import { MapView } from '../../components/MapView';
@@ -83,6 +84,7 @@ export function TripDetail() {
   const [corr, setCorr] = useState({ status: 'boarded', reason: '' });
   const [cancelReason, setCancelReason] = useState('');
   const [cancelling, setCancelling] = useState(false);
+  const [messaging, setMessaging] = useState(false);
   const inv = () => qc.invalidateQueries({ queryKey: ['trip', id] });
   const correct = useMutation({ mutationFn: () => api('POST', `/tenant/trips/${id}/riders/${correcting.id}/correct`, corr), onSuccess: () => { setCorrecting(null); setCorr({ status: 'boarded', reason: '' }); inv(); } });
   const verify = useMutation({ mutationFn: () => api('POST', `/tenant/trips/${id}/inspection/verify`, {}), onSuccess: inv });
@@ -106,6 +108,7 @@ export function TripDetail() {
           <div className="row">
             <TripStatus status={trip.status} />
             {trip.status === 'in_progress' && <Freshness location={location} />}
+            {(trip.status === 'scheduled' || trip.status === 'in_progress') && <button className="btn sm secondary" onClick={() => setMessaging(true)}>{lang === 'ar' ? 'رسالة لأولياء الأمور' : 'Message parents'}</button>}
             {trip.status === 'scheduled' && <button className="btn sm danger" onClick={() => setCancelling(true)}>{lang === 'ar' ? 'إلغاء الرحلة' : 'Cancel trip'}</button>}
           </div>
         </div>
@@ -157,7 +160,8 @@ export function TripDetail() {
                 <td className="small">{fmtTime(e.recordedAt, lang)}</td>
                 <td>{e.studentName}</td>
                 <td>{EVENT_LABEL[e.type] ?? e.type}{e.type === 'correction' && <> → <RiderStatus status={e.newStatus} /></>}</td>
-                <td className="small muted">{e.source === 'qr' ? 'QR' : e.source === 'system' ? (lang === 'ar' ? 'النظام' : 'System') : e.recordedBy}{e.reason && <div>{e.reason}</div>}</td>
+                <td className="small muted">{e.source === 'qr' ? 'QR' : e.source === 'system' ? (lang === 'ar' ? 'النظام' : 'System') : e.recordedBy}{e.reason && <div>{e.reason}</div>}
+                  {e.handoverTo && <div style={{ color: 'var(--green-700)' }}>{lang === 'ar' ? 'سُلّم إلى' : 'Handed to'}: {e.handoverTo}</div>}</td>
               </tr>
             ))}</tbody></table>
           )}
@@ -190,6 +194,7 @@ export function TripDetail() {
           <button className="btn" disabled={corr.reason.trim().length < 5 || correct.isPending} onClick={() => correct.mutate()}>{t('confirm')}</button>
         </Modal>
       )}
+      {messaging && <ComposeModal onClose={() => setMessaging(false)} preset={{ audience: 'trips', tripIds: [trip.id], category: 'delay', label: `${lang === 'ar' ? 'أولياء أمور طلاب رحلة' : 'Parents on trip'} ${trip.routeName}` }} />}
       {cancelling && (
         <Modal title={lang === 'ar' ? 'إلغاء الرحلة' : 'Cancel trip'} onClose={() => setCancelling(false)}>
           <p className="small">{lang === 'ar' ? 'سيُبلَّغ أولياء أمور الطلاب المسجلين في الرحلة.' : 'Parents of riders will be notified.'}</p>

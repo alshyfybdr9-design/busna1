@@ -47,6 +47,7 @@ export interface QueuedEvent {
   source: 'manual' | 'qr';
   lat?: number | null;
   lng?: number | null;
+  handover?: { kind: 'guardian' | 'authorized'; refId: string } | null;
 }
 
 export async function enqueueEvent(tripId: string, e: QueuedEvent) {
