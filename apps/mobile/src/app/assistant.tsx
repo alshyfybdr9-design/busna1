@@ -60,7 +60,7 @@ export default function Assistant() {
   }
 
   const lastUser = [...messages].reverse().find((m) => m.role === 'user')?.text ?? '';
-  const suggestions = role === 'driver'
+  const suggestions = role === 'driver' || role === 'attendant'
     ? [tr('ما معلومات رحلتي الحالية؟', 'My current trip?'), tr('كيف أبدأ الرحلة؟', 'How do I start a trip?'), tr('انقطع الإنترنت، ماذا أفعل؟', 'Lost internet, what now?')]
     : role === 'parent'
       ? [tr('وين باص ولدي؟', "Where is my child's bus?"), tr('هل بنتي ركبت الباص؟', 'Did my daughter board?'), tr('أبي أبلغ عن غياب بكرة', 'Report an absence tomorrow')]

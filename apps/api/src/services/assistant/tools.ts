@@ -51,7 +51,7 @@ interface ToolSpec<S extends z.ZodTypeAny> {
 }
 
 const STAFF: Array<RequestContext['role']> = ['tenant_admin', 'supervisor'];
-const ALL: Array<RequestContext['role']> = ['tenant_admin', 'supervisor', 'driver', 'parent'];
+const ALL: Array<RequestContext['role']> = ['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent'];
 const noArgs = { type: 'object' as const, properties: {}, additionalProperties: false };
 
 const ok = (data: unknown): ToolResult => ({ outcome: 'ok', data });
@@ -297,7 +297,7 @@ export const TOOLS: ToolSpec<any>[] = [
   // ---------------- السائق ----------------
   {
     name: 'get_my_trips_today',
-    roles: ['driver'],
+    roles: ['driver', 'attendant'],
     description: 'List the driver\'s own trips today with status and rider counts.',
     schema: z.object({}),
     jsonSchema: noArgs,
@@ -307,7 +307,7 @@ export const TOOLS: ToolSpec<any>[] = [
         c,
         `select r.name as route, t.direction, t.status, t.planned_start, t.inspection_status,
                 (select count(*) from trip_riders x where x.trip_id = t.id and x.status <> 'absent') as riders
-         from trips t join routes r on r.id = t.route_id where t.driver_user_id = $1 and t.service_date = $2 order by t.planned_start nulls last`,
+         from trips t join routes r on r.id = t.route_id where $1 in (t.driver_user_id, t.attendant_user_id) and t.service_date = $2 order by t.planned_start nulls last`,
         [env.ctx.userId, todayIn(t.timezone)],
       );
       return ok({ trips: rows });
@@ -315,12 +315,12 @@ export const TOOLS: ToolSpec<any>[] = [
   },
   {
     name: 'get_active_trip',
-    roles: ['driver'],
+    roles: ['driver', 'attendant'],
     description: 'Get the driver\'s current in-progress trip: counts by status and the next stop name.',
     schema: z.object({}),
     jsonSchema: noArgs,
     run: async (c, env) => {
-      const trip = await one(c, `select t.id, t.direction, r.name as route, t.started_at from trips t join routes r on r.id = t.route_id where t.driver_user_id = $1 and t.status = 'in_progress' limit 1`, [env.ctx.userId]);
+      const trip = await one(c, `select t.id, t.direction, r.name as route, t.started_at from trips t join routes r on r.id = t.route_id where $1 in (t.driver_user_id, t.attendant_user_id) and t.status = 'in_progress' limit 1`, [env.ctx.userId]);
       if (!trip) return ok({ active: false });
       const counts = await many(c, `select status, count(*) as n from trip_riders where trip_id = $1 group by status`, [trip.id]);
       const next = await one(

@@ -95,7 +95,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
 
   // ---------------- الأعضاء والدعوات ----------------
   app.get('/tenant/members', staff, async (req) => {
-    const q = parse(z.object({ role: z.enum(['tenant_admin', 'supervisor', 'driver', 'parent']).optional() }), req.query);
+    const q = parse(z.object({ role: z.enum(['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent']).optional() }), req.query);
     return withCtx(req.ctx, async (c) => ({
       members: await many(
         c,
@@ -135,7 +135,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
   app.post('/tenant/invites', staff, async (req) => {
     const body = parse(
       z.object({
-        role: z.enum(['tenant_admin', 'supervisor', 'driver', 'parent']),
+        role: z.enum(['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent']),
         fullName: name,
         email: email.optional(),
         phone: phone.optional(),
@@ -143,7 +143,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
       }),
       req.body,
     );
-    if (req.ctx.role === 'supervisor' && !['parent', 'driver'].includes(body.role)) throw new AppError(403, 'forbidden');
+    if (req.ctx.role === 'supervisor' && !['parent', 'driver', 'attendant'].includes(body.role)) throw new AppError(403, 'forbidden');
     if (body.studentIds.length && body.role !== 'parent') throw badRequest();
     return withCtx(req.ctx, async (c) => {
       if (body.role === 'driver') {
@@ -368,10 +368,10 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
   });
 
   // ---------------- المسارات والنقاط والجداول ----------------
-  async function assertDriver(c: Parameters<typeof one>[0], tenantId: string, userId: string | null | undefined) {
+  async function assertDriver(c: Parameters<typeof one>[0], tenantId: string, userId: string | null | undefined, role: 'driver' | 'attendant' = 'driver') {
     if (!userId) return;
-    const m = await one(c, `select 1 from memberships where tenant_id = $1 and user_id = $2 and role = 'driver' and status = 'active'`, [tenantId, userId]);
-    if (!m) throw badRequest('invalid_driver');
+    const m = await one(c, `select 1 from memberships where tenant_id = $1 and user_id = $2 and role = $3 and status = 'active'`, [tenantId, userId, role]);
+    if (!m) throw badRequest(role === 'driver' ? 'invalid_driver' : 'invalid_attendant');
   }
 
   app.get('/tenant/routes', staff, async (req) =>
@@ -380,9 +380,11 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
         c,
         `select r.id, r.name, r.direction, r.status, r.bus_id as "busId", b.label as "busLabel", b.plate_number as "busPlate",
                 r.driver_user_id as "driverUserId", u.full_name as "driverName",
+                r.attendant_user_id as "attendantUserId", au.full_name as "attendantName",
                 (select count(*) from route_stops s where s.route_id = r.id) as "stopCount",
                 (select count(*) from route_riders rr where rr.route_id = r.id) as "riderCount"
          from routes r left join buses b on b.id = r.bus_id left join users u on u.id = r.driver_user_id
+         left join users au on au.id = r.attendant_user_id
          order by r.name`,
       ),
     })),
@@ -393,6 +395,7 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     direction: z.enum(['to_school', 'from_school']),
     busId: z.string().uuid().nullish(),
     driverUserId: z.string().uuid().nullish(),
+    attendantUserId: z.string().uuid().nullish(),
     status: z.enum(['active', 'inactive']).optional(),
   });
 
@@ -400,10 +403,11 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     const body = parse(routeBody, req.body);
     return withCtx(req.ctx, async (c) => {
       await assertDriver(c, req.ctx.tenantId!, body.driverUserId);
+      await assertDriver(c, req.ctx.tenantId!, body.attendantUserId, 'attendant');
       const r = await one(
         c,
-        `insert into routes (tenant_id, name, direction, bus_id, driver_user_id) values ($1, $2, $3, $4, $5) returning id`,
-        [req.ctx.tenantId, body.name, body.direction, body.busId ?? null, body.driverUserId ?? null],
+        `insert into routes (tenant_id, name, direction, bus_id, driver_user_id, attendant_user_id) values ($1, $2, $3, $4, $5, $6) returning id`,
+        [req.ctx.tenantId, body.name, body.direction, body.busId ?? null, body.driverUserId ?? null, body.attendantUserId ?? null],
       );
       await audit(c, req.ctx, 'route.created', 'route', r.id);
       return { route: r };
@@ -417,13 +421,16 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     if (req.ctx.role !== 'tenant_admin' && (body.name || body.direction || body.status)) throw new AppError(403, 'forbidden');
     return withCtx(req.ctx, async (c) => {
       await assertDriver(c, req.ctx.tenantId!, body.driverUserId);
+      await assertDriver(c, req.ctx.tenantId!, body.attendantUserId, 'attendant');
       const r = await c.query(
         `update routes set name = coalesce($2, name), direction = coalesce($3, direction),
            bus_id = case when $4::boolean then $5::uuid else bus_id end,
            driver_user_id = case when $6::boolean then $7::uuid else driver_user_id end,
-           status = coalesce($8, status) where id = $1`,
+           status = coalesce($8, status),
+           attendant_user_id = case when $9::boolean then $10::uuid else attendant_user_id end where id = $1`,
         [id, body.name ?? null, body.direction ?? null, body.busId !== undefined, body.busId ?? null,
-          body.driverUserId !== undefined, body.driverUserId ?? null, body.status ?? null],
+          body.driverUserId !== undefined, body.driverUserId ?? null, body.status ?? null,
+          body.attendantUserId !== undefined, body.attendantUserId ?? null],
       );
       if (!r.rowCount) throw notFound();
       await audit(c, req.ctx, 'route.updated', 'route', id, body);
@@ -436,7 +443,8 @@ export async function tenantAdminRoutes(app: FastifyInstance) {
     return withCtx(req.ctx, async (c) => {
       const route = await one(
         c,
-        `select r.id, r.name, r.direction, r.status, r.bus_id as "busId", r.driver_user_id as "driverUserId" from routes r where r.id = $1`,
+        `select r.id, r.name, r.direction, r.status, r.bus_id as "busId", r.driver_user_id as "driverUserId",
+                r.attendant_user_id as "attendantUserId" from routes r where r.id = $1`,
         [id],
       );
       if (!route) throw notFound();

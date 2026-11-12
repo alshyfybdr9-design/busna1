@@ -17,7 +17,7 @@ export function InviteResult({ role: initialRole, studentIds = [], defaultName =
       ...(f.email ? { email: f.email } : {}), ...(f.phone ? { phone: f.phone } : {}),
     }),
   });
-  const roles = ctx?.role === 'tenant_admin' ? ['parent', 'driver', 'supervisor', 'tenant_admin'] : ['parent', 'driver'];
+  const roles = ctx?.role === 'tenant_admin' ? ['parent', 'driver', 'attendant', 'supervisor', 'tenant_admin'] : ['parent', 'driver', 'attendant'];
   return (
     <Modal title={lang === 'ar' ? 'دعوة مستخدم' : 'Invite user'} onClose={onClose}>
       {!m.data ? (
@@ -68,7 +68,7 @@ export function Team() {
           <div className="row">
             <select value={role} onChange={(e) => setRole(e.target.value)} style={{ width: 180 }}>
               <option value="">{lang === 'ar' ? 'كل الأدوار' : 'All roles'}</option>
-              {['tenant_admin', 'supervisor', 'driver', 'parent'].map((r) => <option key={r} value={r}>{t(`role_${r}` as any)}</option>)}
+              {['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent'].map((r) => <option key={r} value={r}>{t(`role_${r}` as any)}</option>)}
             </select>
             <button className="btn" onClick={() => setInviting(true)}>+ {lang === 'ar' ? 'دعوة' : 'Invite'}</button>
           </div>

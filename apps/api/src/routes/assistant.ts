@@ -7,7 +7,7 @@ import { parse, idParam } from '../lib/util.js';
 import { decideAction, getConversation, handleMessage } from '../services/assistant/engine.js';
 import { aiProvider } from '../integrations/ai.js';
 
-const ROLES: Role[] = ['tenant_admin', 'supervisor', 'driver', 'parent'];
+const ROLES: Role[] = ['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent'];
 
 export async function assistantRoutes(app: FastifyInstance) {
   const auth = { preHandler: requireAuth(ROLES) };

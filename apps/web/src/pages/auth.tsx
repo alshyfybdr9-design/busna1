@@ -14,7 +14,7 @@ function homeFor(s: Session) {
   if (s.context.kind === 'membership') {
     const mid = s.context.mid;
     const m = s.contexts.memberships.find((x) => x.membershipId === mid);
-    if (m && (m.role === 'driver' || m.role === 'parent')) return '/mobile-only';
+    if (m && (m.role === 'driver' || m.role === 'attendant' || m.role === 'parent')) return '/mobile-only';
     return '/app';
   }
   return '/select';
@@ -172,7 +172,7 @@ export function InvitePage() {
   }
 
   const inv = q.data?.invite;
-  const mobileRole = inv && (inv.role === 'driver' || inv.role === 'parent');
+  const mobileRole = inv && (inv.role === 'driver' || inv.role === 'attendant' || inv.role === 'parent');
   return (
     <div className="center-page">
       <div className="card auth-card">
@@ -293,7 +293,7 @@ export function MobileOnlyPage() {
         <div className="brand" style={{ padding: 0 }}><BrandMark /> {t('appName')}</div>
         <p>
           {lang === 'ar'
-            ? 'تم تسجيل حسابك بنجاح. واجهات السائق وولي الأمر متاحة عبر تطبيق باصنا للجوال (يدعم تتبع الرحلة والإشعارات).'
+            ? 'تم تسجيل حسابك بنجاح. واجهات السائق والمرافق وولي الأمر متاحة عبر تطبيق باصنا للجوال (يدعم تتبع الرحلة والإشعارات).'
             : 'Your account is ready. Driver and parent features are available in the Busna mobile app.'}
         </p>
         <a className="btn" href={`${APP_SCHEME}://`}>{lang === 'ar' ? 'افتح التطبيق' : 'Open the app'}</a>

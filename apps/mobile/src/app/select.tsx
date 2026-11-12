@@ -5,7 +5,7 @@ import { logout, selectMembership } from '../lib/session';
 import { Btn, Card, ErrorView, Pill, Screen, T, useLang } from '../components/ui';
 
 const ROLE: Record<string, [string, string]> = {
-  driver: ['سائق', 'Driver'], parent: ['ولي أمر', 'Parent'], supervisor: ['مشرف نقل', 'Supervisor'], tenant_admin: ['مدير الجهة', 'Admin'],
+  driver: ['سائق', 'Driver'], attendant: ['مرافق', 'Bus attendant'], parent: ['ولي أمر', 'Parent'], supervisor: ['مشرف نقل', 'Supervisor'], tenant_admin: ['مدير الجهة', 'Admin'],
 };
 
 /** اختيار الجهة/الدور بعد الدخول عند تعدد العضويات — الصلاحيات تُحدد في الخادم */

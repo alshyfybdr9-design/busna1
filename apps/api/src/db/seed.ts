@@ -26,6 +26,21 @@ const c = new pg.Client({ connectionString: url });
  */
 async function seedExtras(tenantId: string) {
   const id = async (sql: string, params: unknown[]) => (await c.query(sql, params)).rows[0]?.id as string | undefined;
+  // مرافقة تجريبية لمسارَي الشمال (الصباح والعودة) ورحلات اليوم عليهما
+  let att = await id(`select id from users where email = 'attendant1@demo.busna.local'`, []);
+  if (!att) {
+    att = await id(
+      `insert into users (email, phone, password_hash, full_name) values ('attendant1@demo.busna.local', '+966500000021', $1, '[تجريبي] المرافقة هند') returning id`,
+      [await hashPassword(password)],
+    );
+  }
+  await c.query(`insert into memberships (tenant_id, user_id, role) values ($1, $2, 'attendant') on conflict do nothing`, [tenantId, att]);
+  await c.query(`update routes set attendant_user_id = $2 where tenant_id = $1 and name like '%— شمال' and attendant_user_id is null`, [tenantId, att]);
+  await c.query(
+    `update trips t set attendant_user_id = r.attendant_user_id from routes r
+     where t.route_id = r.id and t.tenant_id = $1 and t.attendant_user_id is null and t.status = 'scheduled' and r.attendant_user_id is not null`,
+    [tenantId],
+  );
   const leen = await id(`select id from students where tenant_id = $1 and full_name = 'لين (تجريبي)'`, [tenantId]);
   const reem = await id(`select id from students where tenant_id = $1 and full_name = 'ريم (تجريبي)'`, [tenantId]);
   const p1 = await id(`select id from users where email = 'parent1@demo.busna.local'`, []);
@@ -151,7 +166,7 @@ try {
   console.log('Seeded demo tenant DEMO01 ([تجريبي] مدرسة النور النموذجية).');
   console.log('Accounts (all share one password):');
   for (const e of ['platform@demo.busna.local (platform admin)', 'admin@demo.busna.local (tenant admin)', 'supervisor@demo.busna.local',
-    'driver1@demo.busna.local', 'driver2@demo.busna.local', 'parent1@demo.busna.local (2 children)', 'parent2@demo.busna.local']) console.log(`  - ${e}`);
+    'driver1@demo.busna.local', 'driver2@demo.busna.local', 'attendant1@demo.busna.local (bus attendant, north routes)', 'parent1@demo.busna.local (2 children)', 'parent2@demo.busna.local']) console.log(`  - ${e}`);
   console.log(`Password: ${password}`);
 } catch (e) {
   await c.query('rollback');

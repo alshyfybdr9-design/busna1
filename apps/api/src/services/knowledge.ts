@@ -16,7 +16,7 @@ function terms(query: string) {
 }
 
 export function audienceFor(role: RequestContext['role']) {
-  return role === 'parent' ? 'parent' : role === 'driver' ? 'driver' : 'staff';
+  return role === 'parent' ? 'parent' : role === 'driver' || role === 'attendant' ? 'driver' : 'staff';
 }
 
 const NORM = (col: string) => `translate(lower(${col}), 'أإآةى', 'اااهي')`;

@@ -16,7 +16,7 @@ export class ApiError extends Error {
 
 export interface Membership {
   membershipId: string;
-  role: 'tenant_admin' | 'supervisor' | 'driver' | 'parent';
+  role: 'tenant_admin' | 'supervisor' | 'driver' | 'attendant' | 'parent';
   tenantId: string;
   tenantName: string;
   tenantNameEn: string | null;

@@ -6,7 +6,7 @@ import { Btn, Card, ErrorView, Field, Loading, Screen, T, s, useLang } from '../
 import { TenantHeader } from '../../components/auth';
 
 const ROLE: Record<string, [string, string]> = {
-  driver: ['سائق', 'Driver'], parent: ['ولي أمر', 'Parent'], supervisor: ['مشرف نقل', 'Supervisor'], tenant_admin: ['مدير الجهة', 'Admin'],
+  driver: ['سائق', 'Driver'], attendant: ['مرافق', 'Bus attendant'], parent: ['ولي أمر', 'Parent'], supervisor: ['مشرف نقل', 'Supervisor'], tenant_admin: ['مدير الجهة', 'Admin'],
 };
 
 /** فتح رابط الدعوة في التطبيق: تسجيل حساب جديد أو ربط حساب موجود. المعاينة لا تعرض بيانات شخصية. */

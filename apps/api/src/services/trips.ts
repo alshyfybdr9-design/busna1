@@ -78,12 +78,13 @@ export async function createTripFromRoute(
   }
   const trip = await one(
     c,
-    `insert into trips (tenant_id, route_id, schedule_id, service_date, direction, bus_id, driver_user_id, planned_start)
-     values ($1, $2, $3, $4, $5, $6, $7, case when $8::time is null then null else ($4::date + $8::time) at time zone $9 end)
+    `insert into trips (tenant_id, route_id, schedule_id, service_date, direction, bus_id, driver_user_id, planned_start, attendant_user_id)
+     values ($1, $2, $3, $4, $5, $6, $7, case when $8::time is null then null else ($4::date + $8::time) at time zone $9 end,
+             (select m.user_id from memberships m where m.tenant_id = $1 and m.user_id = $10 and m.role = 'attendant' and m.status = 'active'))
      on conflict (schedule_id, service_date) do nothing
      returning *`,
     [route.tenant_id, route.id, input.scheduleId ?? null, input.serviceDate, route.direction, route.bus_id,
-      route.driver_user_id, input.departureTime ?? null, route.timezone],
+      route.driver_user_id, input.departureTime ?? null, route.timezone, route.attendant_user_id ?? null],
   );
   if (!trip) return null; // موجودة مسبقًا لهذا الجدول
   const riders = await many(

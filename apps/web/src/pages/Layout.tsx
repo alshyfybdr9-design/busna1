@@ -18,7 +18,7 @@ export function TenantLayout() {
     if (!session) nav('/', { replace: true });
     else if (session.context.kind === 'platform') nav('/platform', { replace: true });
     else if (!m) nav('/select', { replace: true });
-    else if (m.role === 'driver' || m.role === 'parent') nav('/mobile-only', { replace: true });
+    else if (m.role === 'driver' || m.role === 'attendant' || m.role === 'parent') nav('/mobile-only', { replace: true });
   }, [ready, session, m, nav]);
   if (!m) return <div className="center-page"><Loading /></div>;
   const isAdmin = m.role === 'tenant_admin';

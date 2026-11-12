@@ -22,7 +22,7 @@ export async function tenantOpsRoutes(app: FastifyInstance) {
         `select t.id, t.status, t.direction, t.service_date as "serviceDate", t.planned_start as "plannedStart",
                 t.started_at as "startedAt", t.ended_at as "endedAt", t.inspection_status as "inspectionStatus",
                 t.last_location_at as "lastLocationAt", r.name as "routeName", b.label as "busLabel", b.plate_number as "busPlate",
-                u.full_name as "driverName",
+                u.full_name as "driverName", (select full_name from users where id = t.attendant_user_id) as "attendantName",
                 (select json_object_agg(x.status, x.n) from (select status, count(*) n from trip_riders where trip_id = t.id group by status) x) as counts
          from trips t join routes r on r.id = t.route_id left join buses b on b.id = t.bus_id left join users u on u.id = t.driver_user_id
          where t.service_date = $1 order by t.planned_start nulls last, r.name`,
@@ -80,8 +80,10 @@ export async function tenantOpsRoutes(app: FastifyInstance) {
         `select t.id, t.status, t.direction, t.service_date as "serviceDate", t.planned_start as "plannedStart",
                 t.started_at as "startedAt", t.ended_at as "endedAt", t.inspection_status as "inspectionStatus",
                 t.cancelled_reason as "cancelledReason", t.route_id as "routeId", r.name as "routeName",
-                b.label as "busLabel", b.plate_number as "busPlate", u.full_name as "driverName", u.phone as "driverPhone"
+                b.label as "busLabel", b.plate_number as "busPlate", u.full_name as "driverName", u.phone as "driverPhone",
+                au.full_name as "attendantName", au.phone as "attendantPhone"
          from trips t join routes r on r.id = t.route_id left join buses b on b.id = t.bus_id left join users u on u.id = t.driver_user_id
+         left join users au on au.id = t.attendant_user_id
          where t.id = $1`,
         [id],
       );

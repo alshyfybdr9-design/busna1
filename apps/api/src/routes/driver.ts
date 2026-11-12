@@ -47,7 +47,9 @@ async function ownTrip(c: Parameters<typeof one>[0], tripId: string) {
 }
 
 export async function driverRoutes(app: FastifyInstance) {
-  const auth = { preHandler: requireAuth(['driver']) };
+  // «الطاقم»: السائق والمرافق. السائق وحده يبدأ الرحلة وينهيها ويرسل الموقع.
+  const auth = { preHandler: requireAuth(['driver', 'attendant']) };
+  const driverOnly = { preHandler: requireAuth(['driver']) };
 
   app.get('/driver/trips', auth, async (req) => {
     const q = parse(z.object({ date: isoDate.optional() }), req.query);
@@ -61,12 +63,12 @@ export async function driverRoutes(app: FastifyInstance) {
                 r.name as "routeName", b.plate_number as "busPlate", b.label as "busLabel",
                 (select count(*) from trip_riders tr where tr.trip_id = t.id and tr.status not in ('absent')) as "riderCount"
          from trips t join routes r on r.id = t.route_id left join buses b on b.id = t.bus_id
-         where t.driver_user_id = $1 and (t.service_date = $2 or t.status = 'in_progress'
+         where $1 in (t.driver_user_id, t.attendant_user_id) and (t.service_date = $2 or t.status = 'in_progress'
                or (t.status = 'completed' and t.inspection_status = 'pending'))
          order by t.planned_start nulls last, t.created_at`,
         [req.ctx.userId, date],
       );
-      return { date, trips, messages: await recentMessages(c) };
+      return { date, trips, myRole: req.ctx.role, messages: await recentMessages(c) };
     });
   });
 
@@ -97,6 +99,12 @@ export async function driverRoutes(app: FastifyInstance) {
         ? await many(c, `select student_id as "studentId", kind, ref_id as "refId", full_name as "fullName", relationship from app.trip_receivers($1) order by kind, full_name`, [id])
         : [];
       const inspection = await one(c, `select result, completed_at as "completedAt" from trip_inspections where trip_id = $1`, [id]);
+      const crew = await one(
+        c,
+        `select driver_name as "driverName", driver_phone as "driverPhone", attendant_name as "attendantName", attendant_phone as "attendantPhone"
+         from app.trip_crew($1)`,
+        [id],
+      );
       return {
         trip: {
           id: trip.id, status: trip.status, direction: trip.direction, serviceDate: trip.service_date,
@@ -108,6 +116,8 @@ export async function driverRoutes(app: FastifyInstance) {
         counts: await riderCounts(c, id),
         inspection,
         inspectionItems: INSPECTION_ITEMS,
+        myRole: req.ctx.role,
+        crew,
         tracking: { intervalSec: tenant.cfg.locationIntervalSec },
         safety: {
           emergencyNumber: tenant.cfg.emergencyNumber,
@@ -118,7 +128,7 @@ export async function driverRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/driver/trips/:id/start', auth, async (req) => {
+  app.post('/driver/trips/:id/start', driverOnly, async (req) => {
     const { id } = parse(idParam, req.params);
     return withCtx(req.ctx, async (c) => {
       const trip = await ownTrip(c, id);
@@ -145,7 +155,7 @@ export async function driverRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/driver/trips/:id/locations', { ...auth, config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req) => {
+  app.post('/driver/trips/:id/locations', { ...driverOnly, config: { rateLimit: { max: 240, timeWindow: '1 minute' } } }, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(z.object({ points: z.array(pointSchema).min(1).max(500) }), req.body);
     return withCtx(req.ctx, async (c) => {
@@ -171,7 +181,7 @@ export async function driverRoutes(app: FastifyInstance) {
     });
   });
 
-  app.post('/driver/trips/:id/end', auth, async (req) => {
+  app.post('/driver/trips/:id/end', driverOnly, async (req) => {
     const { id } = parse(idParam, req.params);
     const body = parse(z.object({ acknowledgeUnresolved: z.boolean().default(false) }), req.body ?? {});
     return withCtx(req.ctx, async (c) => {

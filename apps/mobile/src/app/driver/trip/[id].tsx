@@ -35,14 +35,14 @@ export default function DriverTrip() {
   const [rejected, setRejected] = useState<Array<{ student_id: string; code: string }>>([]);
   const [handoverFor, setHandoverFor] = useState<Rider | null>(null);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (silent = false) => {
     try {
       const d = await api('GET', `/driver/trips/${id}`);
       setData(d);
       setErr(null);
       setLocal({});
     } catch (e) {
-      setErr(e);
+      if (!silent) setErr(e); // التحديث الدوري في الخلفية لا يعرض خطأ عند ضعف الاتصال
     }
   }, [id]);
 
@@ -52,10 +52,13 @@ export default function DriverTrip() {
     } catch {
       /* سيُعاد لاحقًا */
     }
-    setPending(await pendingCounts(id));
+    const pc = await pendingCounts(id);
+    setPending(pc);
     setRejected(await rejectedEvents(id));
     setTracking(await isTracking());
-  }, [id]);
+    // بعد المزامنة: نحدّث القائمة لنرى ما سجّله الطرف الآخر من الطاقم (السائق أو المرافق)
+    if (pc.events === 0) await load(true);
+  }, [id, load]);
 
   useFocusEffect(useCallback(() => {
     load();
@@ -65,13 +68,15 @@ export default function DriverTrip() {
   }, [load, sync]));
 
   // إعادة تشغيل التتبع إن كانت الرحلة جارية وتوقف (مثلًا بعد إعادة تشغيل الجهاز)
+  const isDriver = data?.myRole !== 'attendant';
   useEffect(() => {
-    if (data?.trip.status === 'in_progress' && tracking === false) {
+    // التتبع من جوال السائق فقط
+    if (data?.myRole === 'driver' && data?.trip.status === 'in_progress' && tracking === false) {
       ensureLocationPermissions().then((p) => {
         if (p === 'background' || p === 'foreground_only') startTracking(id, data.tracking.intervalSec).then(() => setTracking(true)).catch(() => {});
       });
     }
-  }, [data?.trip.status, tracking, id, data?.tracking?.intervalSec]);
+  }, [data?.myRole, data?.trip.status, tracking, id, data?.tracking?.intervalSec]);
 
   const riders: Rider[] = useMemo(() => (data?.riders ?? []).map((r: Rider) => ({ ...r, status: local[r.studentId] ?? r.status })), [data, local]);
   const stops: Stop[] = data?.stops ?? [];
@@ -158,6 +163,15 @@ export default function DriverTrip() {
       <Card>
         <T bold size={20}>{trip.route?.name}</T>
         <T muted>{tr(...DIR_LABEL[trip.direction])} · {trip.bus?.label ?? trip.bus?.plate}</T>
+        {data.crew && (isDriver ? data.crew.attendantName : data.crew.driverName) && (
+          <View style={[s.row, { justifyContent: 'space-between' }]}>
+            <T size={14}>{isDriver ? tr('المرافق', 'Attendant') : tr('السائق', 'Driver')}: {isDriver ? data.crew.attendantName : data.crew.driverName}</T>
+            {(isDriver ? data.crew.attendantPhone : data.crew.driverPhone) && (
+              <Btn kind="ghost" title={tr('اتصال', 'Call')} onPress={() => Linking.openURL(`tel:${isDriver ? data.crew.attendantPhone : data.crew.driverPhone}`)} />
+            )}
+          </View>
+        )}
+        {!isDriver && <T muted size={13}>{tr('أنت المرافق: تسجّل الصعود والنزول والتسليم وفحص خلو الباص. السائق يبدأ الرحلة وينهيها.', 'You are the attendant: you record boarding, drop-off, handover and the bus check. The driver starts and ends the trip.')}</T>}
         <View style={s.row}>
           {(['boarded', 'expected', 'alighted'] as const).map((k) => (
             <Pill key={k} tone={k === 'boarded' ? 'blue' : k === 'expected' ? 'gray' : 'green'} text={`${tr(...RIDER_LABEL[k])}: ${riders.filter((r) => r.status === k).length}`} />
@@ -180,11 +194,17 @@ export default function DriverTrip() {
         </Card>
       )}
 
-      {trip.status === 'scheduled' && <Btn big title={tr('بدء الرحلة', 'Start trip')} busy={starting} onPress={startTrip} />}
+      {trip.status === 'scheduled' && isDriver && <Btn big title={tr('بدء الرحلة', 'Start trip')} busy={starting} onPress={startTrip} />}
+      {trip.status === 'scheduled' && !isDriver && (
+        <Card style={{ backgroundColor: C.amberBg }}>
+          <T style={{ color: C.amber }}>{tr('بانتظار السائق لبدء الرحلة. ستظهر أزرار التسجيل بعد البدء.', 'Waiting for the driver to start the trip. Recording opens once it starts.')}</T>
+          <Btn kind="secondary" title={tr('تحديث', 'Refresh')} onPress={() => load()} />
+        </Card>
+      )}
 
       {active && (
         <>
-          <Card style={{ borderColor: tracking ? C.green : C.amber, borderWidth: 2 }}>
+          {isDriver && <Card style={{ borderColor: tracking ? C.green : C.amber, borderWidth: 2 }}>
             <T bold style={{ color: tracking ? C.greenDark : C.amber }}>
               {tracking ? tr('● مشاركة الموقع تعمل', '● Location sharing on') : tr('مشاركة الموقع متوقفة', 'Location sharing off')}
             </T>
@@ -193,12 +213,12 @@ export default function DriverTrip() {
               if (p === 'background' || p === 'foreground_only') { await startTracking(id, data.tracking.intervalSec); setTracking(true); }
               else Alert.alert(tr('الموقع غير متاح', 'Location unavailable'), tr('فعّل إذن الموقع من الإعدادات.', 'Enable location permission in Settings.'), [{ text: tr('الإعدادات', 'Settings'), onPress: () => Linking.openSettings() }, { text: tr('إغلاق', 'Close') }]);
             }} />}
-          </Card>
+          </Card>}
           {nextStop && (
             <Card>
               <T muted>{tr('نقطة التوقف التالية', 'Next stop')}</T>
               <T bold size={22}>{nextStop.name}</T>
-              <Btn big kind="secondary" title={tr('فتح الملاحة', 'Navigate')} onPress={() => openNavigation(nextStop.lat, nextStop.lng)} />
+              {isDriver && <Btn big kind="secondary" title={tr('فتح الملاحة', 'Navigate')} onPress={() => openNavigation(nextStop.lat, nextStop.lng)} />}
             </Card>
           )}
           <View style={s.row}>
@@ -212,7 +232,7 @@ export default function DriverTrip() {
         <Card key={stop.id}>
           <View style={[s.row, { justifyContent: 'space-between' }]}>
             <T bold size={17}>{stop.seq}. {stop.name}</T>
-            {active && <Btn kind="ghost" title={tr('ملاحة', 'Navigate')} onPress={() => openNavigation(stop.lat, stop.lng)} />}
+            {active && isDriver && <Btn kind="ghost" title={tr('ملاحة', 'Navigate')} onPress={() => openNavigation(stop.lat, stop.lng)} />}
           </View>
           {rs.map((r) => (
             <View key={r.id} style={{ borderTopWidth: 1, borderColor: C.line, paddingVertical: 10, gap: 8 }}>
@@ -235,7 +255,8 @@ export default function DriverTrip() {
         </Card>
       ))}
 
-      {active && <Btn big kind="warn" title={tr('إنهاء الرحلة', 'End trip')} onPress={() => router.push(`/driver/end/${id}`)} />}
+      {active && isDriver && <Btn big kind="warn" title={tr('إنهاء الرحلة', 'End trip')} onPress={() => router.push(`/driver/end/${id}`)} />}
+      {active && !isDriver && <T muted size={13}>{tr('عند نهاية الرحلة ينهيها السائق، ثم تجري أنت فحص خلو الباص.', 'At the end the driver ends the trip, then you do the bus-empty check.')}</T>}
       {trip.status === 'completed' && trip.inspectionStatus === 'pending' && <Btn big kind="warn" title={tr('فحص خلو الباص', 'Bus-empty check')} onPress={() => router.push(`/driver/end/${id}`)} />}
 
       <HandoverSheet

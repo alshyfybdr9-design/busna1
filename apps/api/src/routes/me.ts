@@ -8,7 +8,7 @@ import { parse, idParam } from '../lib/util.js';
 import { tenantSettings } from '../config.js';
 
 export async function meRoutes(app: FastifyInstance) {
-  const auth = { preHandler: requireAuth(['tenant_admin', 'supervisor', 'driver', 'parent', 'platform_admin', 'platform_support', 'platform_readonly']) };
+  const auth = { preHandler: requireAuth(['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent', 'platform_admin', 'platform_support', 'platform_readonly']) };
 
   app.get('/me', auth, async (req) =>
     withCtx(req.ctx, async (c) => {

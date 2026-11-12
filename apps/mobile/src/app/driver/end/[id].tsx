@@ -105,7 +105,15 @@ export default function EndTrip() {
     <Screen>
       {err != null && <ErrorView error={err} />}
 
-      {step === 'confirm' && (
+      {step === 'confirm' && trip?.myRole === 'attendant' && (
+        <Card>
+          <T bold size={20}>{tr('السائق ينهي الرحلة', 'The driver ends the trip')}</T>
+          <T muted>{tr('بعد أن ينهي السائق الرحلة، يظهر لك هنا فحص خلو الباص. تأكد من تسجيل نزول كل الطلاب أولًا.', 'After the driver ends the trip, the bus-empty check appears here. Make sure every student is recorded as dropped off first.')}</T>
+          <Btn kind="secondary" title={tr('تحديث', 'Refresh')} onPress={() => load().catch(setErr)} />
+          <Btn kind="ghost" title={tr('رجوع', 'Back')} onPress={() => router.back()} />
+        </Card>
+      )}
+      {step === 'confirm' && trip && trip.myRole !== 'attendant' && (
         <Card>
           <T bold size={20}>{tr('إنهاء الرحلة', 'End trip')}</T>
           <T muted>{tr('عند الإنهاء تتوقف مشاركة الموقع، ثم يُطلب منك فحص خلو الباص.', 'Ending stops location sharing, then you must check the bus is empty.')}</T>

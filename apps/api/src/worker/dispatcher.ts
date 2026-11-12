@@ -209,7 +209,7 @@ async function buildNotes(c: Db, ev: { tenant_id: string; kind: string; payload:
         users = await many(c, parentsSql + `(select tr.student_id from trip_riders tr where tr.trip_id = any($2::uuid[]) and tr.status <> 'absent')`, [ev.tenant_id, b.trip_ids]);
       }
       if (b.audience === 'drivers' || b.audience === 'everyone') {
-        users = [...users, ...(await many(c, `select distinct user_id from memberships where tenant_id = $1 and role = 'driver' and status = 'active'`, [ev.tenant_id]))];
+        users = [...users, ...(await many(c, `select distinct user_id from memberships where tenant_id = $1 and role in ('driver', 'attendant') and status = 'active'`, [ev.tenant_id]))];
       }
       const ids = [...new Set(users.map((u) => u.user_id))];
       await c.query(`update broadcasts set recipient_count = $2 where id = $1`, [b.id, ids.length]);

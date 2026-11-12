@@ -10,7 +10,7 @@ import { searchKnowledge } from '../services/knowledge.js';
 import { enqueue } from '../services/outbox.js';
 import { loadTenant } from '../services/trips.js';
 
-const TENANT_ROLES: Role[] = ['tenant_admin', 'supervisor', 'driver', 'parent'];
+const TENANT_ROLES: Role[] = ['tenant_admin', 'supervisor', 'driver', 'attendant', 'parent'];
 const ANY: Role[] = [...TENANT_ROLES, 'platform_admin', 'platform_support'];
 const isPlatform = (r: Role) => r === 'platform_admin' || r === 'platform_support';
 

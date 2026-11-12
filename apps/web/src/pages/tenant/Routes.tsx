@@ -12,7 +12,12 @@ const DAYS_EN = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function useFleet() {
   const buses = useQuery({ queryKey: ['buses'], queryFn: () => api('GET', '/tenant/buses') });
   const drivers = useQuery({ queryKey: ['members', 'driver'], queryFn: () => api('GET', '/tenant/members?role=driver') });
-  return { buses: buses.data?.buses ?? [], drivers: (drivers.data?.members ?? []).filter((d: any) => d.status === 'active') };
+  const attendants = useQuery({ queryKey: ['members', 'attendant'], queryFn: () => api('GET', '/tenant/members?role=attendant') });
+  return {
+    buses: buses.data?.buses ?? [],
+    drivers: (drivers.data?.members ?? []).filter((d: any) => d.status === 'active'),
+    attendants: (attendants.data?.members ?? []).filter((d: any) => d.status === 'active'),
+  };
 }
 
 export function RoutesPage() {
@@ -21,10 +26,10 @@ export function RoutesPage() {
   const ctx = useOutletContext<{ role: string }>();
   const [adding, setAdding] = useState(false);
   const q = useQuery({ queryKey: ['routes'], queryFn: () => api('GET', '/tenant/routes') });
-  const { buses, drivers } = useFleet();
-  const [f, setF] = useState({ name: '', direction: 'to_school', busId: '', driverUserId: '' });
+  const { buses, drivers, attendants } = useFleet();
+  const [f, setF] = useState({ name: '', direction: 'to_school', busId: '', driverUserId: '', attendantUserId: '' });
   const create = useMutation({
-    mutationFn: () => api('POST', '/tenant/routes', { name: f.name, direction: f.direction, busId: f.busId || null, driverUserId: f.driverUserId || null }),
+    mutationFn: () => api('POST', '/tenant/routes', { name: f.name, direction: f.direction, busId: f.busId || null, driverUserId: f.driverUserId || null, attendantUserId: f.attendantUserId || null }),
     onSuccess: () => { setAdding(false); qc.invalidateQueries({ queryKey: ['routes'] }); },
   });
   return (
@@ -37,13 +42,14 @@ export function RoutesPage() {
       {q.error && <ErrorBox error={q.error} />}
       {q.data && (q.data.routes.length === 0 ? <Empty /> : (
         <div className="table-wrap"><table>
-          <thead><tr><th>{lang === 'ar' ? 'المسار' : 'Route'}</th><th>{lang === 'ar' ? 'الاتجاه' : 'Direction'}</th><th>{t('buses')}</th><th>{t('role_driver')}</th><th>{lang === 'ar' ? 'النقاط' : 'Stops'}</th><th>{t('students')}</th></tr></thead>
+          <thead><tr><th>{lang === 'ar' ? 'المسار' : 'Route'}</th><th>{lang === 'ar' ? 'الاتجاه' : 'Direction'}</th><th>{t('buses')}</th><th>{t('role_driver')}</th><th>{t('role_attendant')}</th><th>{lang === 'ar' ? 'النقاط' : 'Stops'}</th><th>{t('students')}</th></tr></thead>
           <tbody>{q.data.routes.map((r: any) => (
             <tr key={r.id}>
               <td><Link to={`/app/routes/${r.id}`}>{r.name}</Link>{r.status !== 'active' && <span className="badge gray"> {r.status}</span>}</td>
               <td>{t(`dir_${r.direction}` as any)}</td>
               <td>{r.busLabel ?? r.busPlate ?? <span className="badge amber">—</span>}</td>
               <td>{r.driverName ?? <span className="badge amber">—</span>}</td>
+              <td>{r.attendantName ?? <span className="muted">—</span>}</td>
               <td>{r.stopCount}</td><td>{r.riderCount}</td>
             </tr>
           ))}</tbody>
@@ -59,6 +65,8 @@ export function RoutesPage() {
               <select value={f.busId} onChange={(e) => setF({ ...f, busId: e.target.value })}><option value="">—</option>{buses.map((b: any) => <option key={b.id} value={b.id}>{b.label ?? b.plateNumber}</option>)}</select></div>
             <div className="field"><label>{t('role_driver')}</label>
               <select value={f.driverUserId} onChange={(e) => setF({ ...f, driverUserId: e.target.value })}><option value="">—</option>{drivers.map((d: any) => <option key={d.userId} value={d.userId}>{d.fullName}</option>)}</select></div>
+            <div className="field"><label>{t('role_attendant')} ({lang === 'ar' ? 'اختياري' : 'optional'})</label>
+              <select value={f.attendantUserId} onChange={(e) => setF({ ...f, attendantUserId: e.target.value })}><option value="">{lang === 'ar' ? 'بدون مرافق' : 'None'}</option>{attendants.map((d: any) => <option key={d.userId} value={d.userId}>{d.fullName}</option>)}</select></div>
             {create.error && <ErrorBox error={create.error} />}
             <button className="btn" disabled={create.isPending}>{t('save')}</button>
           </form>
@@ -78,7 +86,7 @@ export function RouteDetail() {
   const isAdmin = ctx?.role === 'tenant_admin';
   const q = useQuery({ queryKey: ['route', id], queryFn: () => api('GET', `/tenant/routes/${id}`) });
   const students = useQuery({ queryKey: ['students', ''], queryFn: () => api('GET', '/tenant/students') });
-  const { buses, drivers } = useFleet();
+  const { buses, drivers, attendants } = useFleet();
   const [stops, setStops] = useState<StopDraft[] | null>(null);
   const [assign, setAssign] = useState({ studentId: '', stopId: '' });
   const [sched, setSched] = useState({ days: [0, 1, 2, 3, 4], time: '06:30' });
@@ -114,9 +122,13 @@ export function RouteDetail() {
           <select style={{ width: 200 }} value={route.driverUserId ?? ''} onChange={(e) => updateRoute.mutate({ driverUserId: e.target.value || null })}>
             <option value="">—</option>{drivers.map((d: any) => <option key={d.userId} value={d.userId}>{d.fullName}</option>)}
           </select>
+          <label className="small">{t('role_attendant')}</label>
+          <select style={{ width: 200 }} value={route.attendantUserId ?? ''} onChange={(e) => updateRoute.mutate({ attendantUserId: e.target.value || null })}>
+            <option value="">{lang === 'ar' ? 'بدون مرافق' : 'None'}</option>{attendants.map((d: any) => <option key={d.userId} value={d.userId}>{d.fullName}</option>)}
+          </select>
         </div>
         {updateRoute.error && <ErrorBox error={updateRoute.error} />}
-        <div className="small muted" style={{ marginTop: 6 }}>{lang === 'ar' ? 'تغيير الباص/السائق يسري على الرحلات التي تُنشأ لاحقًا.' : 'Bus/driver changes apply to trips created afterwards.'}</div>
+        <div className="small muted" style={{ marginTop: 6 }}>{lang === 'ar' ? 'تغيير الباص/السائق/المرافق يسري على الرحلات التي تُنشأ لاحقًا. المرافق يسجّل الحضور والتسليم وفحص الباص من تطبيق الجوال، والسائق يبدأ الرحلة وينهيها.' : 'Bus/driver changes apply to trips created afterwards.'}</div>
       </div>
 
       <div className="grid cols-2">

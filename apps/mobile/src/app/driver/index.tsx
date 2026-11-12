@@ -13,6 +13,7 @@ export default function DriverHome() {
       {q.loading && !q.data && <Loading />}
       {q.error != null && <ErrorView error={q.error} onRetry={q.reload} />}
       <MessagesCard messages={q.data?.messages} />
+      {q.data?.myRole === 'attendant' && <T muted size={13}>{tr('رحلاتك كمرافق اليوم. افتح الرحلة لتسجيل الصعود والنزول.', 'Your trips as attendant today. Open a trip to record boarding and drop-off.')}</T>}
       {q.data && q.data.trips.length === 0 && (
         <Card><T muted>{tr('لا توجد رحلات معيّنة لك اليوم.', 'No trips assigned to you today.')}</T></Card>
       )}

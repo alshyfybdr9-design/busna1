@@ -25,7 +25,7 @@ export default function Index() {
   if (!session) return <Redirect href="/welcome" />;
   const m = currentMembership(session);
   if (!m) return <Redirect href="/select" />;
-  if (m.role === 'driver') return <Redirect href="/driver" />;
+  if (m.role === 'driver' || m.role === 'attendant') return <Redirect href="/driver" />;
   if (m.role === 'parent') return <Redirect href="/parent" />;
   return (
     <Screen>

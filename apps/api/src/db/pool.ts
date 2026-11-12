@@ -32,7 +32,7 @@ export async function closePools() {
 /** سياق الطلب الموثّق — يُستخرج من الخادم فقط، لا من مدخلات المستخدم */
 export interface RequestContext {
   userId: string;
-  role: 'platform_admin' | 'platform_support' | 'platform_readonly' | 'tenant_admin' | 'supervisor' | 'driver' | 'parent' | 'none';
+  role: 'platform_admin' | 'platform_support' | 'platform_readonly' | 'tenant_admin' | 'supervisor' | 'driver' | 'attendant' | 'parent' | 'none';
   tenantId: string | null;
   membershipId: string | null;
   /** وصول دعم استثنائي (قراءة فقط) */

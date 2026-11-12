@@ -39,7 +39,7 @@ export function Trips() {
           <thead><tr><th>{lang === 'ar' ? 'المسار' : 'Route'}</th><th>{lang === 'ar' ? 'الموعد' : 'Planned'}</th><th>{lang === 'ar' ? 'الحالة' : 'Status'}</th><th>{lang === 'ar' ? 'الحضور' : 'Riders'}</th><th>{lang === 'ar' ? 'الفحص' : 'Check'}</th></tr></thead>
           <tbody>{q.data.trips.map((x: any) => (
             <tr key={x.id}>
-              <td><Link to={`/app/trips/${x.id}`}>{x.routeName}</Link><div className="small muted">{t(`dir_${x.direction}` as any)} · {x.driverName} · {x.busLabel ?? x.busPlate}</div></td>
+              <td><Link to={`/app/trips/${x.id}`}>{x.routeName}</Link><div className="small muted">{t(`dir_${x.direction}` as any)} · {x.driverName}{x.attendantName ? ` · ${lang === 'ar' ? 'المرافق' : 'Attendant'}: ${x.attendantName}` : ''} · {x.busLabel ?? x.busPlate}</div></td>
               <td>{fmtTime(x.plannedStart, lang)}</td>
               <td><TripStatus status={x.status} /></td>
               <td className="small">{x.counts ? Object.entries(x.counts).map(([k, v]) => `${t(`rider_${k}` as any)}: ${v}`).join(' · ') : '—'}</td>
@@ -103,7 +103,7 @@ export function TripDetail() {
         <div className="row between">
           <div>
             <h2 style={{ marginBottom: 4 }}>{trip.routeName}</h2>
-            <div className="muted small">{trip.serviceDate} · {t(`dir_${trip.direction}` as any)} · {trip.driverName} <span dir="ltr">{trip.driverPhone}</span> · {trip.busLabel ?? trip.busPlate}</div>
+            <div className="muted small">{trip.serviceDate} · {t(`dir_${trip.direction}` as any)} · {trip.driverName} <span dir="ltr">{trip.driverPhone}</span>{trip.attendantName && <> · {lang === 'ar' ? 'المرافق' : 'Attendant'}: {trip.attendantName} <span dir="ltr">{trip.attendantPhone}</span></>} · {trip.busLabel ?? trip.busPlate}</div>
           </div>
           <div className="row">
             <TripStatus status={trip.status} />
