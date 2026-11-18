@@ -75,7 +75,7 @@ async function createPending(c: Db, env: ToolEnv, tool: string, params: unknown,
 
 /** يحدد الطفل من المعرّف أو الاسم — مع التحقق عبر RLS أنه من أبناء ولي الأمر */
 async function resolveChild(c: Db, childId?: string | null, childName?: string | null) {
-  const kids = await many<{ id: string; full_name: string }>(c, `select id, full_name from students where status = 'active' order by full_name`);
+  const kids = await many<{ id: string; full_name: string }>(c, `select s.id, s.full_name from students s where s.status = 'active' and s.id in (select gs.student_id from guardian_students gs where gs.guardian_user_id = app.cur_user()) order by s.full_name`);
   if (childId) return { kids, child: kids.find((k) => k.id === childId) ?? null };
   if (childName) {
     const n = childName.trim();
@@ -186,7 +186,7 @@ export const TOOLS: ToolSpec<any>[] = [
     schema: z.object({}),
     jsonSchema: noArgs,
     run: async (c) => {
-      const kids = await many(c, `select id, full_name from students where status = 'active' order by full_name`);
+      const kids = await many(c, `select s.id, s.full_name from students s where s.status = 'active' and s.id in (select gs.student_id from guardian_students gs where gs.guardian_user_id = app.cur_user()) order by s.full_name`);
       return ok({ children: kids.map((k) => ({ id: k.id, firstName: firstName(k.full_name) })) });
     },
   },

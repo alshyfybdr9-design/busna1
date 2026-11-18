@@ -16,6 +16,9 @@ export type OutboxKind =
  * يُكتب الحدث في نفس معاملة التغيير (Transactional Outbox)،
  * ثم يعالجه العامل الخلفي ويحوّله إلى إشعارات بدون تكرار.
  */
-export async function enqueue(c: Db, tenantId: string, kind: OutboxKind, payload: Record<string, unknown>) {
-  await c.query(`insert into outbox_events (tenant_id, kind, payload) values ($1, $2, $3)`, [tenantId, kind, JSON.stringify(payload)]);
+export async function enqueue(c: Db, tenantId: string, kind: OutboxKind, payload: Record<string, unknown>, dedupeKey?: string) {
+  await c.query(
+    `insert into outbox_events (tenant_id, kind, payload, dedupe_key) values ($1, $2, $3, $4) on conflict do nothing`,
+    [tenantId, kind, JSON.stringify(payload), dedupeKey ?? null],
+  );
 }

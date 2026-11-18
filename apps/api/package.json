@@ -13,7 +13,10 @@
     "db:seed": "tsx --env-file-if-exists=../../.env src/db/seed.ts",
     "admin:create": "tsx --env-file-if-exists=../../.env src/db/create-platform-admin.ts",
     "worker:retention": "tsx --env-file-if-exists=../../.env src/worker/run-retention.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "loadtest:seed": "tsx --env-file-if-exists=../../.env loadtest/seed-scale.ts",
+    "loadtest:serve": "npm run build && tsx --env-file-if-exists=../../.env loadtest/serve.ts",
+    "loadtest:run": "tsx --env-file-if-exists=../../.env loadtest/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.6.0",

@@ -87,7 +87,9 @@ describe('core trip flow', () => {
   });
 
   it('marks location as stale when updates stop', async () => {
+    // محاكاة مرور الوقت: النقاط وآخر موقع محفوظ على الرحلة أقدم بعشر دقائق
     await ownerQuery(`update bus_locations set recorded_at = recorded_at - interval '10 minutes' where trip_id = $1`, [w.tripId]);
+    await ownerQuery(`update trips set last_location_at = last_location_at - interval '10 minutes' where id = $1`, [w.tripId]);
     const s = await api('GET', `/parent/children/${w.student1}/status`, w.parent1.token);
     expect(s.body.tracking.location.isStale).toBe(true);
     expect(s.body.tracking.location.ageSeconds).toBeGreaterThanOrEqual(600);

@@ -177,7 +177,7 @@ export async function tenantOpsRoutes(app: FastifyInstance) {
         `select t.id, t.direction, t.started_at as "startedAt", r.name as "routeName", b.label as "busLabel", b.plate_number as "busPlate",
                 u.full_name as "driverName", l.lat, l.lng, l.recorded_at, l.accuracy_m
          from trips t join routes r on r.id = t.route_id left join buses b on b.id = t.bus_id left join users u on u.id = t.driver_user_id
-         left join lateral (select lat, lng, recorded_at, accuracy_m from bus_locations bl where bl.trip_id = t.id order by recorded_at desc limit 1) l on true
+         left join lateral (select t.last_lat as lat, t.last_lng as lng, t.last_location_at as recorded_at, t.last_accuracy_m as accuracy_m where t.last_lat is not null) l on true
          where t.status = 'in_progress' order by r.name`,
       );
       return {

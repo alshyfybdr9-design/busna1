@@ -31,6 +31,10 @@ const schema = z.object({
   AI_MODEL: z.string().default('claude-opus-5-5'),
   AI_EFFORT: z.enum(['low', 'medium', 'high']).default('medium'),
   WORKER_ENABLED: bool.default(true),
+  // أحجام مجموعات الاتصال بقاعدة البيانات لكل نسخة من الخادم
+  DB_POOL_APP: z.coerce.number().int().min(2).max(200).default(20),
+  WEB_CONCURRENCY: z.coerce.number().int().min(0).max(64).default(1),
+  DB_POOL_AUTH: z.coerce.number().int().min(2).max(100).default(10),
   TRUST_PROXY: bool.default(false),
 });
 

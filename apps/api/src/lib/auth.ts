@@ -1,7 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppError } from './errors.js';
 import { verifyAccessToken } from './tokens.js';
-import { withAuthDb, one, type RequestContext } from '../db/pool.js';
+import { withAuthDb, authQueryOne, one, type RequestContext } from '../db/pool.js';
 
 export type Role = RequestContext['role'];
 
@@ -40,18 +40,20 @@ export function requireAuth(roles?: Role[]) {
     let ctx: RequestContext;
     if (claims.ctx.kind === 'membership') {
       const mid = claims.ctx.mid;
-      const m = await withAuthDb((c) =>
-        one<{ id: string; tenant_id: string; role: Role; ok: boolean }>(
-          c,
-          `select m.id, m.tenant_id, m.role,
-                  (m.status = 'active' and t.status = 'active' and u.status = 'active') as ok
-           from memberships m join tenants t on t.id = m.tenant_id join users u on u.id = m.user_id
-           where m.id = $1 and m.user_id = $2`,
-          [mid, claims.sub],
-        ),
+      // نقرأ بيانات الجهة في نفس الاستعلام لتُستخدم طوال الطلب بدل قراءتها مرة ثانية
+      const m = await authQueryOne<{ id: string; tenant_id: string; role: Role; ok: boolean; t_name: string; t_timezone: string; t_settings: unknown; t_phone: string | null }>(
+        `select m.id, m.tenant_id, m.role,
+                (m.status = 'active' and t.status = 'active' and u.status = 'active') as ok,
+                t.name as t_name, t.timezone as t_timezone, t.settings as t_settings, t.contact_phone as t_phone
+         from memberships m join tenants t on t.id = m.tenant_id join users u on u.id = m.user_id
+         where m.id = $1 and m.user_id = $2`,
+        [mid, claims.sub],
       );
       if (!m || !m.ok) throw new AppError(401, 'unauthorized');
-      ctx = { userId: claims.sub, role: m.role, tenantId: m.tenant_id, membershipId: m.id, ip };
+      ctx = {
+        userId: claims.sub, role: m.role, tenantId: m.tenant_id, membershipId: m.id, ip,
+        tenant: { id: m.tenant_id, name: m.t_name, timezone: m.t_timezone, settings: m.t_settings, contact_phone: m.t_phone },
+      };
     } else if (claims.ctx.kind === 'platform') {
       const u = await withAuthDb((c) =>
         one<{ platform_role: string | null; ok: boolean }>(c, `select platform_role, status = 'active' as ok from users where id = $1`, [claims.sub]),

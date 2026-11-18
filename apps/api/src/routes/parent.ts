@@ -19,7 +19,12 @@ export async function parentRoutes(app: FastifyInstance) {
     withCtx(req.ctx, async (c) => {
       const tenant = await loadTenant(c, req.ctx.tenantId!);
       const today = todayIn(tenant.timezone);
-      const children = await many(c, `select id, full_name as "fullName", grade, requires_handover as "requiresHandover" from students where status = 'active' order by full_name`);
+      // قيد صريح بأبناء ولي الأمر (عبر الفهرس) بدل تقييم سياسة الأمان على كل طلاب الجهة — RLS يبقى مطبقًا
+      const children = await many(
+        c,
+        `select s.id, s.full_name as "fullName", s.grade, s.requires_handover as "requiresHandover" from students s
+         where s.status = 'active' and s.id in (select gs.student_id from guardian_students gs where gs.guardian_user_id = app.cur_user()) order by s.full_name`,
+      );
       const trips = children.length
         ? await many(
             c,
@@ -54,16 +59,21 @@ export async function parentRoutes(app: FastifyInstance) {
         c,
         `select t.id, t.status, t.direction, t.planned_start as "plannedStart", t.started_at as "startedAt",
                 t.ended_at as "endedAt", t.route_id, t.bus_id,
-                tr.id as rider_id, tr.status as "riderStatus", tr.stop_id, tr.boarded_at as "boardedAt", tr.alighted_at as "alightedAt"
+                tr.id as rider_id, tr.status as "riderStatus", tr.stop_id, tr.boarded_at as "boardedAt", tr.alighted_at as "alightedAt",
+                b.label as bus_label, b.plate_number as bus_plate,
+                st.name as stop_name, st.lat as stop_lat, st.lng as stop_lng, st.planned_time as stop_time,
+                t.last_lat, t.last_lng, t.last_location_at, t.last_accuracy_m, t.last_speed_mps
          from trip_riders tr join trips t on t.id = tr.trip_id
+         left join buses b on b.id = t.bus_id
+         left join route_stops st on st.id = tr.stop_id
          where tr.student_id = $1 and (t.status = 'in_progress' or (t.service_date = $2 and t.status <> 'cancelled'))
          order by (t.status = 'in_progress') desc, t.planned_start desc nulls last, t.created_at desc limit 1`,
         [id, today],
       );
       if (!trip) return { child, trip: null, tracking: { available: false, reason: 'no_trip_today' }, eta: null };
-      const bus = trip.bus_id ? await one(c, `select label, plate_number as plate from buses where id = $1`, [trip.bus_id]) : null;
-      // نقطة توقف هذا الطفل فقط
-      const stop = trip.stop_id ? await one(c, `select name, lat, lng, planned_time as "plannedTime" from route_stops where id = $1`, [trip.stop_id]) : null;
+      // الباص ونقطة توقف هذا الطفل فقط (RLS يخفي نقاط الآخرين)
+      const bus = trip.bus_label != null || trip.bus_plate != null ? { label: trip.bus_label, plate: trip.bus_plate } : null;
+      const stop = trip.stop_name != null ? { name: trip.stop_name, lat: trip.stop_lat, lng: trip.stop_lng, plannedTime: trip.stop_time } : null;
       const events = await many(
         c,
         `select type, new_status as "newStatus", recorded_at as "recordedAt", source, handover_to as "handoverTo" from boarding_events
@@ -77,18 +87,16 @@ export async function parentRoutes(app: FastifyInstance) {
       } else if (!tenant.cfg.parentTrackingEnabled) {
         tracking = { available: false, reason: 'disabled_by_tenant' };
       } else {
-        const loc = formatLocation(await latestLocation(c, trip.id), tenant.cfg);
+        const loc = formatLocation(
+          trip.last_lat != null ? { lat: trip.last_lat, lng: trip.last_lng, recorded_at: trip.last_location_at, accuracy_m: trip.last_accuracy_m } : null,
+          tenant.cfg,
+        );
         tracking = loc ? { available: true, location: loc } : { available: false, reason: 'no_location_yet' };
         // الذهاب: حتى يصل الباص لنقطة الصعود. العودة: حتى يصل لنقطة النزول (المنزل)
         const awaiting = (trip.direction === 'to_school' && trip.riderStatus === 'expected')
           || (trip.direction === 'from_school' && trip.riderStatus === 'boarded');
         if (loc && stop && awaiting) {
-          const sp = await one<{ v: number | null }>(
-            c,
-            `select avg(speed_mps)::float8 as v from bus_locations where trip_id = $1 and recorded_at > now() - interval '3 minutes' and speed_mps > 0.5`,
-            [trip.id],
-          );
-          eta = await etaProvider().estimate({ from: loc, to: stop, locationAgeSec: loc.ageSeconds, staleAfterSec: tenant.cfg.staleAfterSec, recentSpeedMps: sp?.v ?? null });
+          eta = await etaProvider().estimate({ from: loc, to: stop, locationAgeSec: loc.ageSeconds, staleAfterSec: tenant.cfg.staleAfterSec, recentSpeedMps: trip.last_speed_mps ?? null });
         }
       }
       return {
@@ -131,6 +139,7 @@ export async function parentRoutes(app: FastifyInstance) {
         `select a.id, a.student_id as "studentId", s.full_name as "studentName", a.absence_date as "date", a.direction,
                 a.reason, a.status, a.created_at as "createdAt"
          from absences a join students s on s.id = a.student_id
+         where a.student_id in (select gs.student_id from guardian_students gs where gs.guardian_user_id = app.cur_user())
          order by a.absence_date desc, a.created_at desc limit 100`,
       ),
     })),
@@ -245,6 +254,7 @@ export async function parentRoutes(app: FastifyInstance) {
                 r.start_date as "startDate", r.end_date as "endDate", r.address, r.status, r.review_note as "reviewNote",
                 r.created_at as "createdAt"
          from stop_change_requests r join students s on s.id = r.student_id
+         where r.student_id in (select gs.student_id from guardian_students gs where gs.guardian_user_id = app.cur_user())
          order by r.created_at desc limit 50`,
       ),
     })),

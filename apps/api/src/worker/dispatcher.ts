@@ -276,10 +276,9 @@ export async function runApproachChecks(): Promise<number> {
     const rows = await many(
       c,
       `with lastloc as (
-         select distinct on (bl.trip_id) bl.trip_id, bl.lat, bl.lng, bl.recorded_at
-         from bus_locations bl join trips t on t.id = bl.trip_id
-         where t.status = 'in_progress' and bl.recorded_at > now() - interval '2 minutes'
-         order by bl.trip_id, bl.recorded_at desc)
+         select t.id as trip_id, t.last_lat as lat, t.last_lng as lng, t.last_location_at as recorded_at
+         from trips t
+         where t.status = 'in_progress' and t.last_lat is not null and t.last_location_at > now() - interval '2 minutes')
        select t.id as trip_id, t.tenant_id, t.direction, tr.student_id, gs.guardian_user_id, st.name as stop_name,
               st.lat as stop_lat, st.lng as stop_lng, l.lat, l.lng, extract(epoch from now() - l.recorded_at)::int as age,
               p.student_id is not null as has_pref, p.approach_meters, tn.settings
@@ -302,10 +301,12 @@ export async function runApproachChecks(): Promise<number> {
       const distanceM = haversineM(bus, stop);
       if (distanceM > threshold) continue;
       const eta = await etaProvider().estimate({ from: bus, to: stop, locationAgeSec: r.age, staleAfterSec: tenantSettings(r.settings).staleAfterSec });
-      await c.query(`insert into outbox_events (tenant_id, kind, payload) values ($1, 'bus_approaching', $2)`, [
+      // مفتاح منع التكرار: لا يُضاف نفس التنبيه للطابور مرة ثانية قبل معالجته
+      await c.query(`insert into outbox_events (tenant_id, kind, payload, dedupe_key) values ($1, 'bus_approaching', $2, $3) on conflict do nothing`, [
         r.tenant_id,
         JSON.stringify({ tripId: r.trip_id, studentId: r.student_id, guardianUserId: r.guardian_user_id, direction: r.direction,
           stopName: r.stop_name, distanceM: Math.round(distanceM), etaSec: eta.available ? eta.seconds : null }),
+        `approach:${r.trip_id}:${r.student_id}:${r.guardian_user_id}`,
       ]);
       n++;
     }
@@ -438,6 +439,8 @@ export async function runRetention(): Promise<{ locationsDeleted: number; notifi
     }
     await c.query(`update assistant_actions set status = 'expired', decided_at = now() where status = 'pending' and expires_at < now()`);
     await c.query(`delete from assistant_tool_log where created_at < now() - interval '365 days'`);
+    // الطابور: الأحداث المعالجة لا حاجة لها بعد أسبوع
+    await c.query(`delete from outbox_events where processed_at < now() - interval '7 days'`);
     await c.query(`insert into audit_logs (action, entity, details) values ('retention.run', 'system', $1)`, [
       JSON.stringify({ locationsDeleted, notificationsDeleted: n.rowCount ?? 0, conversationsDeleted }),
     ]);
@@ -454,7 +457,9 @@ export function startWorker(log: { error: (o: unknown, m?: string) => void }) {
     if (busy) return;
     busy = true;
     try {
-      await processOutbox();
+      // يعالج دفعات متتالية حتى يفرغ الطابور (بحد زمني) بدل دفعة واحدة كل ثانيتين
+      const until = Date.now() + 1500;
+      while ((await processOutbox(200)) === 200 && Date.now() < until) { /* دفعة تالية */ }
       if (ticks % 5 === 0) await runApproachChecks();
       if (ticks % 30 === 0) await runSafetyChecks();
       if (ticks % 1800 === 0) await runRetention();

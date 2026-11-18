@@ -16,6 +16,9 @@ const TRANSITIONS: Record<DriverEventType, RiderStatus[]> = {
 };
 
 export async function loadTenant(c: Db, tenantId: string) {
+  // لقطة الجهة المقروءة مع فحص العضوية في نفس الطلب (بدون ذهاب وعودة إضافي)
+  const snap = (c as any).__tenant as { id: string; name: string; timezone: string; settings: unknown; contact_phone: string | null } | null;
+  if (snap && snap.id === tenantId) return { ...snap, cfg: tenantSettings(snap.settings) };
   const t = await one<{ id: string; name: string; timezone: string; settings: unknown; contact_phone: string | null }>(
     c,
     'select id, name, timezone, settings, contact_phone from tenants where id = $1',
@@ -42,8 +45,14 @@ export function formatLocation(
   };
 }
 
+/** آخر موقع محفوظ على صف الرحلة (يُحدَّث مع كل دفعة نقاط) — بدون بحث في جدول المواقع */
 export async function latestLocation(c: Db, tripId: string) {
-  return one(c, `select lat, lng, recorded_at, accuracy_m from bus_locations where trip_id = $1 order by recorded_at desc limit 1`, [tripId]);
+  return one(
+    c,
+    `select last_lat as lat, last_lng as lng, last_location_at as recorded_at, last_accuracy_m as accuracy_m
+     from trips where id = $1 and last_lat is not null`,
+    [tripId],
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -291,10 +300,15 @@ export async function ingestLocations(c: Db, tripId: string, points: LocationPoi
     [trip.tenant_id, tripId, valid.map((p) => p.recordedAt), valid.map((p) => p.lat), valid.map((p) => p.lng),
       valid.map((p) => p.accuracyM ?? null), valid.map((p) => p.speedMps ?? null), valid.map((p) => p.heading ?? null)],
   );
-  const maxRecorded = valid.reduce((m, p) => (p.recordedAt > m ? p.recordedAt : m), valid[0].recordedAt);
+  // أحدث نقطة في الدفعة؛ تُحفظ على الرحلة فقط إن كانت أحدث من المحفوظ (النقاط المتأخرة من الطابور لا تُرجع الموقع للخلف)
+  const latest = valid.reduce((m, p) => (Date.parse(p.recordedAt) > Date.parse(m.recordedAt) ? p : m), valid[0]);
   await c.query(
-    `update trips set last_location_at = greatest(coalesce(last_location_at, '-infinity'::timestamptz), $2::timestamptz) where id = $1`,
-    [tripId, maxRecorded],
+    `update trips set last_location_at = $2::timestamptz, last_lat = $3, last_lng = $4, last_accuracy_m = $5,
+       -- سرعة متوسطة متحركة (تُستخدم لتقدير وقت الوصول) بدل حسابها من جدول المواقع في كل طلب
+       last_speed_mps = case when $6::real is null or $6::real <= 0.5 then last_speed_mps
+                             else coalesce(last_speed_mps * 0.7 + $6::real * 0.3, $6::real) end
+     where id = $1 and (last_location_at is null or last_location_at < $2::timestamptz)`,
+    [tripId, latest.recordedAt, latest.lat, latest.lng, latest.accuracyM ?? null, latest.speedMps ?? null],
   );
   return { accepted: r.rowCount ?? 0, ignored: points.length - valid.length };
 }

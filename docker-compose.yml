@@ -37,6 +37,7 @@ services:
       PUSH_PROVIDER: none
       # وقت الوصول التقديري: estimate (تقريبي داخلي، بلا مفاتيح) أو none
       ROUTING_PROVIDER: ${ROUTING_PROVIDER:-estimate}
+      WEB_CONCURRENCY: ${WEB_CONCURRENCY:-1}
       # لتفعيل «مساعد باصنا»: ضع AI_PROVIDER=anthropic و ANTHROPIC_API_KEY=... في ملف .env بجانب هذا الملف
       AI_PROVIDER: ${AI_PROVIDER:-none}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
